@@ -47,7 +47,7 @@ type PackingInfo struct {
 }
 
 const (
-	FatimaRepoUrl         = "https://github.com/fatima-go/fatima-provision"
+	FatimaRepoUrl         = "https://github.com/fatima-go/fatima-download"
 	EnvFatimaHome         = "FATIMA_HOME"
 	FatimaBasePackingName = "fatima-package"
 	PackingFileName       = "packing-info.json"
