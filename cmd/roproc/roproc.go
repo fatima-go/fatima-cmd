@@ -89,11 +89,11 @@ func main() {
 			return
 		}
 
-		group := defaultGroupValue
+		processGroup := defaultGroupValue
 		if len(addCommand.Args()) == 2 {
-			group = addCommand.Args()[1]
+			processGroup = addCommand.Args()[1]
 		}
-		err = juno.AddJunoProc(fatimaFlags, addCommand.Args()[0], group)
+		err = juno.AddJunoProc(fatimaFlags, addCommand.Args()[0], processGroup)
 		if err != nil {
 			fmt.Printf("fail to get juno package : %s\n", err.Error())
 		}
