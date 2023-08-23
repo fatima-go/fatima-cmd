@@ -33,6 +33,9 @@ func AddJunoProc(flags share.FatimaCmdFlags, procName string, groupId string) er
 	serviceUrl := flags.BuildJupiterServiceUrl(v1ProcRegistUrl)
 
 	m := make(map[string]interface{})
+	if len(flags.UserPackage) > 0 {
+		m["package"] = flags.UserPackage
+	}
 	m["process"] = procName
 	m["group_id"] = groupId
 
@@ -73,6 +76,9 @@ func RemoveJunoProc(flags share.FatimaCmdFlags, procName string) error {
 	serviceUrl := flags.BuildJupiterServiceUrl(v1ProcUnregistUrl)
 
 	m := make(map[string]interface{})
+	if len(flags.UserPackage) > 0 {
+		m["package"] = flags.UserPackage
+	}
 	m["process"] = procName
 
 	b, err := json.Marshal(m)
