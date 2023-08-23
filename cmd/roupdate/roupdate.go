@@ -26,7 +26,7 @@ import (
 	"os"
 )
 
-var usage = `usage: %s command
+var usage = `usage: %s [option] command
 
 golang fatima package update tool
 
@@ -34,12 +34,20 @@ command :
   all    update tool binaries and opm processes
   bin    update only tool binaries
   opm    update only opm processes
+
+optional arguments:
+  -u string
+        fatima packaging file url
 `
+
+var artifactUrl string
 
 func main() {
 	flag.Usage = func() {
 		fmt.Printf(usage, os.Args[0])
 	}
+
+	flag.StringVar(&artifactUrl, "u", "", "fatima packaging file url")
 
 	flag.Parse()
 	if len(flag.Args()) < 1 {
