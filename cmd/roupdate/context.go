@@ -47,13 +47,17 @@ type PackingInfo struct {
 }
 
 const (
-	FatimaRepoUrl         = "https://github.com/fatima-go/fatima-download"
+	FatimaRepoUrl         = "https://github.com/fatima-go/fatima-download/raw/main"
 	EnvFatimaHome         = "FATIMA_HOME"
 	FatimaBasePackingName = "fatima-package"
 	PackingFileName       = "packing-info.json"
 )
 
 func (u *UpdateContext) GetDownloadUrl() string {
+	if len(artifactUrl) > 0 {
+		return artifactUrl
+	}
+
 	return fmt.Sprintf("%s/fatima-package.%s-%s.tar.gz",
 		FatimaRepoUrl, u.Platform.Os, u.Platform.Architecture)
 }
