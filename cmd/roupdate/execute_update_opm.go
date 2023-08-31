@@ -68,7 +68,7 @@ func (i ExecuteUpdateOpm) Execute(jobContext *UpdateContext) error {
 }
 
 func (i ExecuteUpdateOpm) WaitUntilOpmDown(jobContext *UpdateContext) error {
-	fmt.Printf("wait until opem process down...\n")
+	fmt.Printf("wait until opm process down...\n")
 	time.Sleep(time.Second * 3)
 	return nil
 }
