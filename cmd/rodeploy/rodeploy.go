@@ -23,14 +23,17 @@ package main
 import (
 	"flag"
 	"fmt"
+	. "github.com/fatima-go/fatima-cmd/domain"
 	"github.com/fatima-go/fatima-cmd/jupiter"
 	"github.com/fatima-go/fatima-cmd/share"
 	"os"
+	"path/filepath"
 )
 
 var usage = `usage: %s [option] file
 
 deploy package to server
+version 1.0.0
 
 positional arguments:
   file                  upload 'far' fatima package file
@@ -63,9 +66,15 @@ func main() {
 		return
 	}
 
-	file := flag.Args()[0]
-	if !share.IsFileExist(file) {
-		fmt.Printf("far file doesn't exist : %s\n", file)
+	farArtifactFile := flag.Args()[0]
+	if !share.IsFileExist(farArtifactFile) {
+		fmt.Printf("far farArtifactFile doesn't exist : %s\n", farArtifactFile)
+		return
+	}
+
+	platformSupport, err := hasPlatformSupport(farArtifactFile)
+	if err != nil {
+		fmt.Printf("fail to check platform support from far artifact : %s", err.Error())
 		return
 	}
 
@@ -75,10 +84,85 @@ func main() {
 		return
 	}
 
-	err = jupiter.DeployPackages(fatimaFlags, group, file)
+	if platformSupport {
+		ropackResp, err := jupiter.GetPackages(fatimaFlags)
+		if err != nil {
+			fmt.Printf("fail to get juno package : %s\n", err.Error())
+			return
+		}
+
+		targetPlatform, err := findPlatform(ropackResp, fatimaFlags, group)
+		if err != nil {
+			fmt.Printf("fail to find platform : %s\n", err.Error())
+			return
+		}
+
+		if !hasPlatform(farArtifactFile, targetPlatform) {
+			fmt.Printf("far(%s) doesn't support platform %s\n", farArtifactFile, targetPlatform)
+			return
+		}
+
+		farArtifactFile, err = reformArtifact(fatimaFlags, farArtifactFile, targetPlatform)
+		if err != nil {
+			fmt.Printf("fail to reform artifact for target platform %s : %s", targetPlatform, err.Error())
+			return
+		}
+
+		defer func() {
+			// reform 에 사용된 tmp 폴더는 삭제해 둔다
+			_ = os.RemoveAll(filepath.Dir(farArtifactFile))
+		}()
+	}
+
+	err = jupiter.DeployPackages(fatimaFlags, group, farArtifactFile)
 	if err != nil {
 		fmt.Printf("fail to deploy package : %s\n", err.Error())
 		return
 	}
+}
 
+func findPlatform(ropackResp RopackResp, flags share.FatimaCmdFlags, group string) (string, error) {
+	// flags.UserPackage 가 존재할 경우 해당 HOST 를 찾는다
+	if len(flags.UserPackage) > 0 {
+		deploy, err := ropackResp.Summary.FindDeployByHost(flags.UserPackage)
+		if err != nil {
+			return "", err
+		}
+		return deploy.Platform.String(), nil
+	}
+
+	// 단 한개의 호스트만 존재할 경우 해당 호스트를 넘겨준다
+	if ropackResp.Summary.IsEmptyDeployment() {
+		return "", fmt.Errorf("deployment is empty")
+	}
+
+	if !ropackResp.Summary.HasMultipleHost() {
+		deploy, err := ropackResp.Summary.GetFirstDeploymentHost()
+		if err != nil {
+			return "", err
+		}
+
+		return deploy.Platform.String(), nil
+	}
+
+	// flags.UserPackage 가 비어 있고 group이 존재할 경우 해당 그룹의 첫번째 호스트를 찾는다
+	if len(group) > 0 {
+		deployment, err := ropackResp.Summary.GetDeploymentByGroup(group)
+		if err != nil {
+			return "", err
+		}
+		if len(deployment.Deploy) == 0 {
+			return "", fmt.Errorf("empty deploy for group %s", group)
+		}
+
+		return deployment.Deploy[0].Platform.String(), nil
+	}
+
+	// flags.UserPackage, group이 모두 비어 있을 경우 같은 IP 를 찾는다
+	deployment, err := ropackResp.Summary.FindDeployByLocalIpaddress()
+	if err != nil {
+		return "", err
+	}
+
+	return deployment.Platform.String(), nil
 }

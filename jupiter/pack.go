@@ -23,6 +23,7 @@ package jupiter
 import (
 	"encoding/json"
 	"fmt"
+	. "github.com/fatima-go/fatima-cmd/domain"
 	"github.com/fatima-go/fatima-cmd/share"
 )
 
@@ -38,110 +39,109 @@ func PrintPackages(flags share.FatimaCmdFlags) error {
 		return err
 	}
 
-	var respMap map[string]interface{}
-	err = json.Unmarshal(resp, &respMap)
+	// ----------
+	ropackResp := RopackResp{}
+	err = json.Unmarshal(resp, &ropackResp)
 	if err != nil {
 		return fmt.Errorf("invalid repsonse message sturcture : %s", err.Error())
 	}
 
-	summaryObj := respMap["summary"]
-	summary, ok := summaryObj.(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("invalid response structure")
-	}
-
 	share.PrintPreface(headers, nil)
 
-	deploymentObj := summary["deployment"]
-	deploymentList, ok := deploymentObj.([]interface{})
-	for _, d := range deploymentList {
-		groupDep := d.(map[string]interface{})
-		if groupDep == nil {
-			continue
-		}
-
-		groupName := share.GetString(groupDep, "group_name")
-		fmt.Printf("Group : %s\n", groupName)
-
-		data := make([][]string, 0)
-		for _, v := range buildDeploymentList(groupDep["deploy"]) {
-			data = append(data, v.ToList())
-		}
-		h := []string{"host", "name", "endpoint", "regist_date", "status", "platform"}
-		share.PrintTable(h, data)
+	for _, deployment := range ropackResp.Summary.Deployment {
+		fmt.Printf("Group : %s\n", deployment.GroupName)
+		share.PrintTable(deployment.GetHeaders(), deployment.GetData())
 	}
 
 	fmt.Printf("Total group:%d, host:%d, package:%d\n",
-		share.GetInt(summary, "group_count"),
-		share.GetInt(summary, "host_count"),
-		share.GetInt(summary, "package_count"))
+		ropackResp.Summary.GroupCount,
+		ropackResp.Summary.HostCount,
+		ropackResp.Summary.PackageCount)
 
 	return nil
 }
 
-type Deployment struct {
-	Host       string
-	Name       string
-	Endpoint   string
-	RegistDate string
-	Status     string
-	Platform   string
-}
-
-func (p Deployment) ToList() []string {
-	list := make([]string, 0)
-	list = append(list, p.Host)
-	list = append(list, p.Name)
-	list = append(list, p.Endpoint)
-	list = append(list, p.RegistDate)
-	list = append(list, p.Status)
-	list = append(list, p.Platform)
-	return list
-}
-
-func buildDeployment(m map[string]interface{}) Deployment {
-	p := Deployment{}
-	p.Host = "-"
-	p.Name = "-"
-	p.Endpoint = "-"
-	p.RegistDate = "-"
-	p.Status = "-"
-	p.Platform = "-"
-
-	for k, v := range m {
-		switch k {
-		case "name":
-			p.Name = share.AsString(v)
-		case "host":
-			p.Host = share.AsString(v)
-		case "endpoint":
-			p.Endpoint = share.AsString(v)
-		case "status":
-			p.Status = share.AsString(v)
-		case "regist_date":
-			p.RegistDate = share.AsString(v)
-		case "platform":
-			if platform, ok := v.(map[string]interface{}); ok {
-				os := platform["os"]
-				arch := platform["architecture"]
-				p.Platform = fmt.Sprintf("%s_%s", os, arch)
-			}
-		}
+/*
+	type Deployment struct {
+		Host       string
+		Name       string
+		Endpoint   string
+		RegistDate string
+		Status     string
+		Platform   string
 	}
 
-	return p
-}
-
-func buildDeploymentList(data interface{}) []Deployment {
-	list := make([]Deployment, 0)
-
-	if val, ok := data.([]interface{}); ok {
-		for _, v := range val {
-			if m, ok := v.(map[string]interface{}); ok {
-				list = append(list, buildDeployment(m))
-			}
-		}
+	func (p Deployment) ToList() []string {
+		list := make([]string, 0)
+		list = append(list, p.Host)
+		list = append(list, p.Name)
+		list = append(list, p.Endpoint)
+		list = append(list, p.RegistDate)
+		list = append(list, p.Status)
+		list = append(list, p.Platform)
+		return list
 	}
 
-	return list
+	func buildDeployment(m map[string]interface{}) Deployment {
+		p := Deployment{}
+		p.Host = "-"
+		p.Name = "-"
+		p.Endpoint = "-"
+		p.RegistDate = "-"
+		p.Status = "-"
+		p.Platform = "-"
+
+		for k, v := range m {
+			switch k {
+			case "name":
+				p.Name = share.AsString(v)
+			case "host":
+				p.Host = share.AsString(v)
+			case "endpoint":
+				p.Endpoint = share.AsString(v)
+			case "status":
+				p.Status = share.AsString(v)
+			case "regist_date":
+				p.RegistDate = share.AsString(v)
+			case "platform":
+				if platform, ok := v.(map[string]interface{}); ok {
+					os := platform["os"]
+					arch := platform["architecture"]
+					p.Platform = fmt.Sprintf("%s_%s", os, arch)
+				}
+			}
+		}
+
+		return p
+	}
+
+	func buildDeploymentList(data interface{}) []Deployment {
+		list := make([]Deployment, 0)
+
+		if val, ok := data.([]interface{}); ok {
+			for _, v := range val {
+				if m, ok := v.(map[string]interface{}); ok {
+					list = append(list, buildDeployment(m))
+				}
+			}
+		}
+
+		return list
+	}
+*/
+func GetPackages(flags share.FatimaCmdFlags) (RopackResp, error) {
+	resp := RopackResp{}
+	url := flags.BuildJupiterServiceUrl(v1PackagesUrl)
+
+	_, respData, err := share.CallFatimaApi(url, flags, nil)
+	if err != nil {
+		return resp, err
+	}
+
+	err = json.Unmarshal(respData, &resp)
+	if err != nil {
+		return resp, fmt.Errorf("invalid repsonse message sturcture : %s", err.Error())
+	}
+
+	return resp, nil
 }
