@@ -72,11 +72,7 @@ func main() {
 		return
 	}
 
-	platformSupport, err := hasPlatformSupport(farArtifactFile)
-	if err != nil {
-		fmt.Printf("fail to check platform support from far artifact : %s", err.Error())
-		return
-	}
+	platformSupport := hasPlatformSupport(farArtifactFile)
 
 	err = share.GetToken(&fatimaFlags)
 	if err != nil {

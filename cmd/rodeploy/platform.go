@@ -27,29 +27,20 @@ import (
 	"github.com/fatima-go/fatima-cmd/share"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-func hasPlatformSupport(zipfile string) (bool, error) {
-	zipListing, err := zip.OpenReader(zipfile)
-	if err != nil {
-		return false, err
-	}
-	defer zipListing.Close()
-
-	for _, file := range zipListing.File {
-		if !file.FileInfo().IsDir() {
-			continue
-		}
-
-		if file.FileInfo().Name() == "platform" {
-			return true, nil
-		}
-	}
-
-	return false, nil
+func hasPlatformSupport(zipfile string) bool {
+	platformDirPrefix := fmt.Sprintf("/%s/", PlatformDirName)
+	return isIncludeDirectory(zipfile, platformDirPrefix)
 }
 
 func hasPlatform(zipfile, platform string) bool {
+	platformDirPrefix := fmt.Sprintf("/%s/%s/", PlatformDirName, platform)
+	return isIncludeDirectory(zipfile, platformDirPrefix)
+}
+
+func isIncludeDirectory(zipfile, dirname string) bool {
 	zipListing, err := zip.OpenReader(zipfile)
 	if err != nil {
 		return false
@@ -61,7 +52,7 @@ func hasPlatform(zipfile, platform string) bool {
 			continue
 		}
 
-		if file.FileInfo().Name() == platform {
+		if strings.Compare(file.Name, dirname) == 0 {
 			return true
 		}
 	}
