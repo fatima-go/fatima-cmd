@@ -61,7 +61,10 @@ func isIncludeDirectory(zipfile, dirname string) bool {
 }
 
 // reformArtifact 원본 far 파일에서 타겟 platform 의 바이너리를 base 디렉토리에 복사하고 platform 폴더를 삭제한 후
-// 다시 far 파일로 압축한다
+// 다시 far 파일로 압축한다. 타겟이 되는 서버의 경우 다른 플랫폼 바이너리는 (사용하지 않을 것이기에) 불필요 하므로 제거해서,
+// 즉 타겟이 되는 서버의 플랫폼 바이너리만 전송하기 위해 far 파일을 다시 생성하는 것이다.
+// 예를 들어 최초 빌드했을때의 far 는 gofar.yaml 정의에 의해 N 개의 플랫폼 바이너리들이 준비되어 있을테고
+// 실제 배포시에는 그 중 1개의 플랫폼 바이너리만 필요하므로 나머지는 제거한다.
 func reformArtifact(flags share.FatimaCmdFlags, originFarFile string, platform string) (string, error) {
 	exposeName := filepath.Base(originFarFile)
 
