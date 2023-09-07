@@ -127,11 +127,12 @@ func findPlatform(ropackResp RopackResp, flags share.FatimaCmdFlags, group strin
 		return deploy.Platform.String(), nil
 	}
 
-	// 단 한개의 호스트만 존재할 경우 해당 호스트를 넘겨준다
+	// 디플로이 정보가 아예 없다면 에러 처리한다
 	if ropackResp.Summary.IsEmptyDeployment() {
 		return "", fmt.Errorf("deployment is empty")
 	}
 
+	// 단 한개의 호스트만 존재할 경우 해당 호스트를 넘겨준다
 	if !ropackResp.Summary.HasMultipleHost() {
 		deploy, err := ropackResp.Summary.GetFirstDeploymentHost()
 		if err != nil {
