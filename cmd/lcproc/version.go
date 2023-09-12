@@ -23,6 +23,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/fatima-go/fatima-cmd/share"
@@ -59,10 +60,11 @@ func versioning() {
 		fmt.Printf("%s revisions...\n", proc)
 		for _, r := range revisions {
 			if r.number == curRev {
-				fmt.Printf("%s <=== Current\n", r.revision)
+				fmt.Printf("%s [O] ", r.revision)
 			} else {
-				fmt.Printf("%s\n", r.revision)
+				fmt.Printf("%s     ", r.revision)
 			}
+			fmt.Printf("%s\n", r.GetBuildSummary())
 		}
 		return
 	}
@@ -140,15 +142,37 @@ func isExistRevision(revFolder string) bool {
 }
 
 type Revision struct {
-	dir      string
-	revision string
-	number   int
-	use      bool
+	dir         string
+	revision    string
+	number      int
+	use         bool
+	createDtime string          // 배포 날짜
+	deployment  DeploymentBuild // 배포 브랜치 이름, 마지막 commit message, ...
 }
 
 func (r Revision) getRelativePath() string {
 	idx := strings.LastIndex(r.dir, "revision")
 	return r.dir[idx:]
+}
+
+func (r Revision) GetBuildSummary() string {
+	var buff bytes.Buffer
+	buff.WriteString(r.createDtime)
+	buff.WriteString(" | ")
+	buff.WriteString(fmt.Sprintf("%10s", r.deployment.BuildUser))
+	if !r.deployment.HasGit() {
+		return buff.String()
+	}
+	buff.WriteString(" | ")
+	buff.WriteString(fmt.Sprintf("%10s", r.deployment.Git.Branch))
+	buff.WriteString(" | ")
+	buff.WriteString(r.deployment.Git.Commit)
+	if r.deployment.Git.HasMessage() {
+		buff.WriteString(" | ")
+		buff.WriteString(GetTrimmedMessage(r.deployment.Git.Message))
+	}
+
+	return buff.String()
 }
 
 type RevisionNumbers []Revision
@@ -171,12 +195,53 @@ func getRevisions(revFolder string) []Revision {
 			continue
 		}
 		d := Revision{dir: v, revision: v[idx:], number: m}
+		d = readRevision(d)
 		revisions = append(revisions, d)
 	}
 
 	sort.Sort(RevisionNumbers(revisions))
 	return revisions
 }
+
+// readRevision 버전의 배포 날짜나 브랜치 이름, 커밋 메시지 등을 로딩한다
+func readRevision(revision Revision) Revision {
+	f, err := os.Open(revision.dir)
+	if err != nil {
+		fmt.Printf("fail to open %s : %s", revision.dir, err.Error())
+		return revision
+	}
+
+	info, _ := f.Stat()
+	if !info.IsDir() {
+		fmt.Printf("revision path is not directory %s", revision.dir)
+		return revision
+	}
+
+	// mark create dtime
+	revision.createDtime = info.ModTime().Format(yyyyMMddHHmmss)
+
+	deploymentFile := filepath.Join(revision.dir, deploymentJsonFile)
+	file, err := os.ReadFile(deploymentFile)
+	if err != nil {
+		fmt.Printf("readfile %s err : %s\n", deploymentFile, err.Error())
+		return revision
+	}
+
+	deployment := Deployment{}
+	err = json.Unmarshal(file, &deployment)
+	if err != nil {
+		fmt.Printf("json unmarshal err : %s\n", err.Error())
+		return revision
+	}
+
+	revision.deployment = deployment.Build
+	return revision
+}
+
+const (
+	yyyyMMddHHmmss     = "2006-01-02 15:04:05"
+	deploymentJsonFile = "deployment.json"
+)
 
 func getCurrentRevision(proc string) (int, error) {
 	appProc := filepath.Join(os.Getenv(share.EnvFatimaHome), share.FatimaFolderApp, proc)
