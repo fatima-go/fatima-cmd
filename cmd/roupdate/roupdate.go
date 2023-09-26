@@ -30,6 +30,8 @@ var usage = `usage: %s [option] command
 
 golang fatima package update tool
 
+version : 2023-09-19.v1
+
 command :
   all    update tool binaries and opm processes
   bin    update only tool binaries
