@@ -262,7 +262,7 @@ func NewJupiterContext(name, jupiter, user, password, timezone string) JupiterCo
 	c := JupiterContext{}
 	c.Name = name
 	c.Active = false
-	c.Context.Jupiter = jupiter
+	c.Context.Jupiter = RemoveLastSlash(jupiter)
 	c.Context.User = user
 	c.Context.Password, _ = cipher.Aes256Encode(password)
 	c.Context.Timezone = timezone
