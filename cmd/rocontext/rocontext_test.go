@@ -23,6 +23,7 @@ package main
 import (
 	"fmt"
 	"github.com/fatima-go/fatima-cmd/config"
+	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
@@ -34,4 +35,10 @@ func TestSample(t *testing.T) {
 	}
 
 	fmt.Printf("%s\n", jupiterConfig)
+}
+
+func TestCleanPath(t *testing.T) {
+	assert.Equal(t, "http://127.0.0.1:9190", config.RemoveLastSlash("http://127.0.0.1:9190"))
+	assert.Equal(t, "http://127.0.0.1:9190", config.RemoveLastSlash("http://127.0.0.1:9190/"))
+	assert.Equal(t, "http://127.0.0.1:9190", config.RemoveLastSlash("http://127.0.0.1:9190//"))
 }

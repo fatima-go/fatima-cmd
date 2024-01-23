@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 )
 
 func ensureDirectory(path string, forceCreate bool) error {
@@ -54,4 +55,15 @@ func checkFileExist(path string) error {
 	}
 
 	return nil
+}
+
+func RemoveLastSlash(url string) string {
+	for {
+		if len(url) < 2 || !strings.HasSuffix(url, "/") {
+			break
+		}
+
+		url = strings.TrimRight(url, "/")
+	}
+	return url
 }
