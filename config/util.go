@@ -58,12 +58,5 @@ func checkFileExist(path string) error {
 }
 
 func RemoveLastSlash(url string) string {
-	for {
-		if len(url) < 2 || !strings.HasSuffix(url, "/") {
-			break
-		}
-
-		url = strings.TrimRight(url, "/")
-	}
-	return url
+	return strings.TrimRight(url, "/")
 }
