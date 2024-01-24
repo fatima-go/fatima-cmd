@@ -134,7 +134,7 @@ func BuildFatimaCmdFlags() (FatimaCmdFlags, error) {
 
 	cmdFlags.Username = activeContext.User
 	cmdFlags.Password = activeContext.GetPassword()
-	cmdFlags.JupiterUri = activeContext.Jupiter
+	cmdFlags.JupiterUri = config.RemoveLastSlash(activeContext.Jupiter)
 	cmdFlags.Timezone = activeContext.Timezone
 
 	cmdFlags.Args = flag.Args()
