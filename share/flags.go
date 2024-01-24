@@ -110,7 +110,7 @@ func (c FatimaCmdFlags) BuildJunoServiceUrl(url string) string {
 	return c.Endpoint + "/" + url
 }
 
-func (c FatimaCmdFlags) GetB64Password() string {
+func (c FatimaCmdFlags) GetEncryptedPassword() string {
 	return fmt.Sprintf("b64:%s", base64.StdEncoding.EncodeToString([]byte(c.Password)))
 }
 
