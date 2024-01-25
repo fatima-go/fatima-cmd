@@ -31,7 +31,7 @@ func GetToken(flags *FatimaCmdFlags) error {
 
 	param := make(map[string]interface{})
 	param["id"] = flags.Username
-	param["passwd"] = flags.Password
+	param["passwd"] = flags.GetEncryptedPassword()
 
 	b, err := json.Marshal(param)
 	if err != nil {
