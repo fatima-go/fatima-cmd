@@ -91,7 +91,7 @@ fi
 echo "install dir : ${INSTALL_DIR}"
 
 base_dir=`pwd`
-programs=(lcslack lcproc rocontext roupdate roclip rocron rodeploy roclric rohis rodis rolog ropack roproc lcps rostart rostop lcha startro stopro)
+programs=(lcslack lcproc lccrypto rocontext roupdate roclip rocron rodeploy roclric rohis rodis rolog ropack roproc lcps rostart rostop lcha startro stopro)
 
 for pgm in ${programs[@]}; do
 	dir=${base_dir}"/cmd/"${pgm}
