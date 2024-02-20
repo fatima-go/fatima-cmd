@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/fatima-go/fatima-core/crypt"
+	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"strings"
@@ -16,16 +17,51 @@ Available Commands:{{range $cmds}}
 {{if .HasAvailableSubCommands}}{{else}}{{if .HasAvailableLocalFlags}}
 Flags:
 {{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
-"{{.CommandPath}} [command] --help" 를 타이핑하면 각 명령어의 자세한 사용법을 확인할 수 있습니다.{{end}}
+'{{.CommandPath}} COMMAND --help' 를 타이핑하면 각 명령어의 자세한 사용법을 확인할 수 있습니다.{{end}}
 `
+	plaintextFormat = "[%s]"
 )
 
 var (
-	availableSchemes = []string{
-		crypt.SecretSchemeB64,
-		crypt.SecretSchemeNative,
+	handlers = cryptoHandlers{
+		&cryptoHandler{
+			scheme:  crypt.SecretSchemeB64, // flags 미입력 시 첫번째 handler scheme 을 기본으로 사용
+			encrypt: crypt.CreateSecretBase64,
+		},
+		&cryptoHandler{
+			scheme:  crypt.SecretSchemeNative,
+			encrypt: crypt.CreateSecretNative,
+		},
 	}
 )
+
+type cryptoHandler struct {
+	scheme  string
+	encrypt func(plaintext string) string
+}
+
+func (c *cryptoHandler) createSecret(plaintext string) string {
+	return c.encrypt(plaintext)
+}
+
+type cryptoHandlers []*cryptoHandler
+
+func (c cryptoHandlers) getSchemes() []string {
+	schemes := make([]string, 0, len(c))
+	for _, h := range c {
+		schemes = append(schemes, h.scheme)
+	}
+	return schemes
+}
+
+func (c cryptoHandlers) getHandler(scheme string) *cryptoHandler {
+	for _, h := range c {
+		if scheme == h.scheme {
+			return h
+		}
+	}
+	return nil
+}
 
 func main() {
 	//goland:noinspection SpellCheckingInspection
@@ -82,11 +118,11 @@ type options struct {
 }
 
 func (o options) valid() error {
-	if equalsAny(o.Scheme, availableSchemes...) {
+	allSchemes := handlers.getSchemes()
+	if equalsAnyString(o.Scheme, allSchemes...) {
 		return nil
 	}
-
-	return fmt.Errorf("현재 지원하는 암호화/난독화 스킴은 [%s] 입니다", strings.Join(availableSchemes, "|"))
+	return fmt.Errorf("현재 지원하는 암호화/난독화 스킴은 [%s] 입니다", strings.Join(allSchemes, "|"))
 }
 
 //goland:noinspection SpellCheckingInspection
@@ -94,17 +130,25 @@ func decryptCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "dec ENCRYPTEDTEXT",
 		Short: "암호화문을 복호화합니다.",
-		Args:  requiresMinArguments(1),
+		Long: "암호화문을 복호화합니다.\n" +
+			"여러 암호화문을 동시에 복호화 할 경우 공백을 기준으로 입력하면 됩니다.\n" +
+			"결과 값의 평문(PLAINTEXT)은 공백 등의 구분을 위해 [] 감싸서 출력됩니다.",
+		Args: requiresMinArguments(1),
 
 		RunE: func(cmd *cobra.Command, args []string) error {
-			encryptedText := args[0]
-			plaintext := crypt.ResolveSecret(encryptedText)
-
-			if plaintext == encryptedText {
-				return fmt.Errorf("지원되지 않는 형태로 암호화되어 복호화가 실패했습니다")
+			tableWriter := table.NewWriter()
+			tableWriter.AppendHeader(table.Row{"SECRET_VALUE", "PLAINTEXT"})
+			for _, secretValue := range args {
+				resolved := crypt.ResolveSecret(secretValue)
+				if resolved == secretValue[strings.Index(secretValue, ":")+1:] {
+					resolved = "잘못된 형태의 암호화문으로 복호화 실패"
+				}
+				tableWriter.AppendRows([]table.Row{
+					{secretValue, fmt.Sprintf(plaintextFormat, resolved)},
+				})
 			}
 
-			fmt.Printf("변환값: %s\n", plaintext)
+			fmt.Println(tableWriter.Render())
 			return nil
 		},
 	}
@@ -117,30 +161,35 @@ func encryptCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "enc [FLAGS] PLAINTEXT",
 		Short: "평문을 지정된 스킴으로 암호화 합니다.",
-		Args:  requiresMinArguments(1),
+		Long: "평문을 지정된 스킴으로 암호화 합니다.\n" +
+			"여러 평문을 동시에 암호화 할 경우 공백을 기준으로 입력하면 되고 공백, 특수문자 등이 포함된 경우 경우 \"\" 를 감싸면 됩니다.\n" +
+			"결과 값의 평문(PLAINTEXT)은 공백 등의 구분을 위해 [] 감싸서 출력됩니다.",
+		Args: requiresMinArguments(1),
 
 		RunE: func(cmd *cobra.Command, args []string) error {
-			plaintext := args[0]
 			err := opt.valid()
 			if err != nil {
 				return err
 			}
 
-			var encrypted string
-			switch opt.Scheme {
-			case "b64":
-				encrypted = crypt.CreateSecretBase64(plaintext)
-			case "native":
-				encrypted = crypt.CreateSecretNative(plaintext)
+			handler := handlers.getHandler(opt.Scheme)
+			tableWriter := table.NewWriter()
+			tableWriter.AppendHeader(table.Row{"PLAINTEXT", "SECRET_VALUE"})
+			for _, plaintext := range args {
+				trimmed := strings.TrimSpace(plaintext)
+				tableWriter.AppendRows([]table.Row{
+					{fmt.Sprintf(plaintextFormat, trimmed), handler.createSecret(trimmed)},
+				})
 			}
 
-			fmt.Printf("변환값: %s\n", encrypted)
+			fmt.Println(tableWriter.Render())
 			return nil
 		},
 	}
 
 	flags := cmd.Flags()
-	flags.StringVarP(&opt.Scheme, "scheme", "s", "b64", fmt.Sprintf("암호화 방법, %s", strings.Join(availableSchemes, "|")))
+	flags.StringVarP(&opt.Scheme, "scheme", "s", handlers[0].scheme,
+		fmt.Sprintf("암호화 방법, %s", strings.Join(handlers.getSchemes(), "|")))
 
 	return cmd
 }
@@ -151,11 +200,12 @@ func requiresMinArguments(minArgsCount int) cobra.PositionalArgs {
 			return nil
 		}
 
-		return errors.Errorf("수행하는데 flags를 제외한 최소한 [%d] 개의 인자가 필요합니다.\n%s -h, --help 를 타이핑 해보세요.", minArgsCount, cmd.CommandPath())
+		return errors.Errorf("수행하는데 flags를 제외한 최소한 [%d] 개의 인자가 필요합니다.\n%s -h, --help 를 타이핑 해보세요.",
+			minArgsCount, cmd.CommandPath())
 	}
 }
 
-func equalsAny[V comparable](target V, compareValues ...V) bool {
+func equalsAnyString(target string, compareValues ...string) bool {
 	for _, compareValue := range compareValues {
 		if target == compareValue {
 			return true
