@@ -57,7 +57,7 @@ func main() {
 		} else if mode == "false" {
 			turnOn = false
 		} else {
-			fmt.Printf(string(usage), os.Args[0])
+			fmt.Printf(usage, os.Args[0])
 			return
 		}
 
@@ -68,18 +68,19 @@ func main() {
 	}
 
 	if len(os.Args) != 3 {
-		fmt.Printf(string(usage), os.Args[0])
+		fmt.Printf(usage, os.Args[0])
 		return
 	}
 
 	mode = strings.ToLower(os.Args[1])
 	onoff := strings.ToLower(os.Args[2])
+
 	if onoff == "true" {
 		turnOn = true
 	} else if onoff == "false" {
 		turnOn = false
 	} else {
-		fmt.Printf(string(usage), os.Args[0])
+		fmt.Printf(usage, os.Args[0])
 		return
 	}
 
@@ -113,8 +114,17 @@ func loadConfig() (slackConfig, error) {
 }
 
 type SlackConfig struct {
-	Active bool   `json:"active"`
-	Url    string `json:"url"`
+	Active  bool   `json:"active"`
+	Url     string `json:"url"`
+	Channel string `json:"channel,omitempty"`
+}
+
+func (sc SlackConfig) String() string {
+	if len(sc.Channel) > 0 {
+		return fmt.Sprintf("activate: [%t], hookUri: [%s], channel: [%s]", sc.Active, sc.Url, sc.Channel)
+	}
+
+	return fmt.Sprintf("activate: [%t], hookUri: [%s]", sc.Active, sc.Url)
 }
 
 type slackConfig map[string]*SlackConfig
@@ -126,26 +136,19 @@ func printStatus() {
 		return
 	}
 
-	alarm, ok := config["alarm"]
-	if !ok {
-		fmt.Printf("not found alarm config\n")
-	} else {
-		fmt.Printf("alarm : %v [%s]\n", alarm.Active, alarm.Url)
-	}
-	event, ok := config["event"]
-	if !ok {
-		fmt.Printf("not found event config\n")
-	} else {
-		fmt.Printf("event : %v [%s]\n", event.Active, event.Url)
+	for key, value := range config {
+		fmt.Printf("%s: %s\n", key, value)
 	}
 
-	for k, v := range config {
-		if k == "alarm" || k == "event" {
-			continue
-		}
-		fmt.Printf("%s : %v [%s]\n", k, v.Active, v.Url)
+	if _, existsAlarm := config["alarm"]; !existsAlarm {
+		fmt.Println("not found alarm config")
+	}
+
+	if _, existsEvent := config["event"]; !existsEvent {
+		fmt.Println("not found event config")
 	}
 }
+
 func setAllStatus(turnOn bool) bool {
 	config, err := loadConfig()
 	if err != nil {
