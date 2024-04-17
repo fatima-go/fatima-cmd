@@ -3,7 +3,7 @@ module github.com/fatima-go/fatima-cmd
 go 1.21
 
 require (
-	github.com/fatima-go/fatima-core v1.1.1
+	github.com/fatima-go/fatima-core v1.1.2
 	github.com/jedib0t/go-pretty/v6 v6.5.4
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/pkg/errors v0.9.1
