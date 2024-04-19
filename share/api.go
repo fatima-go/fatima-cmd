@@ -23,6 +23,7 @@ package share
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -207,6 +208,7 @@ func CallFarUpload(url string, flags FatimaCmdFlags, desc map[string]interface{}
 		fmt.Printf("body : json[%v], file[%s]\n", desc, path)
 	}
 
+	fmt.Println("> start transfer...")
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, nil, err
@@ -257,7 +259,20 @@ func newfileUploadRequest(uri string, far string, path string) (*http.Request, e
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", uri, body)
+	reader := CustomBodyReader{buff: body}
+	req, err := http.NewRequest("POST", uri, reader)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	return req, err
+}
+
+type CustomBodyReader struct {
+	buff *bytes.Buffer
+}
+
+func (c CustomBodyReader) Read(p []byte) (n int, err error) {
+	n, err = c.buff.Read(p)
+	if errors.Is(err, io.EOF) {
+		fmt.Printf("> transfer finished...\n> waiting server response...\n")
+	}
+	return
 }

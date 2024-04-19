@@ -80,6 +80,7 @@ func main() {
 		return
 	}
 
+	fmt.Println("> login success...")
 	if platformSupport {
 		ropackResp, err := jupiter.GetPackages(fatimaFlags)
 		if err != nil {
@@ -124,6 +125,7 @@ func findPlatform(ropackResp RopackResp, flags share.FatimaCmdFlags, group strin
 		if err != nil {
 			return "", err
 		}
+		fmt.Printf("> target %s::%s\n", deploy.Host, deploy.Platform)
 		return deploy.Platform.String(), nil
 	}
 
@@ -139,6 +141,7 @@ func findPlatform(ropackResp RopackResp, flags share.FatimaCmdFlags, group strin
 			return "", err
 		}
 
+		fmt.Printf("> target %s:%s\n", deploy.Host, deploy.Platform)
 		return deploy.Platform.String(), nil
 	}
 
@@ -152,6 +155,7 @@ func findPlatform(ropackResp RopackResp, flags share.FatimaCmdFlags, group strin
 			return "", fmt.Errorf("empty deploy for group %s", group)
 		}
 
+		fmt.Printf("> target group %s::%s\n", deployment.GroupName, deployment.Deploy[0].Platform)
 		return deployment.Deploy[0].Platform.String(), nil
 	}
 
@@ -161,5 +165,6 @@ func findPlatform(ropackResp RopackResp, flags share.FatimaCmdFlags, group strin
 		return "", err
 	}
 
+	fmt.Printf("> target %s::%s\n", deployment.Host, deployment.Platform)
 	return deployment.Platform.String(), nil
 }
