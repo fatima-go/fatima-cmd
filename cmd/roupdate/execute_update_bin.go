@@ -21,10 +21,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type ExecuteUpdateBin struct {
@@ -34,6 +36,10 @@ func (i ExecuteUpdateBin) Name() string {
 	return "update fatima tool binaries..."
 }
 
+const (
+	roupdateBin = "roupdate"
+)
+
 func (i ExecuteUpdateBin) Execute(jobContext *UpdateContext) error {
 	artifactBinDir := filepath.Join(jobContext.GetPackingDir(), "bin")
 	currentBinDir := filepath.Join(jobContext.FatimaHomeDir, "bin")
@@ -42,27 +48,76 @@ func (i ExecuteUpdateBin) Execute(jobContext *UpdateContext) error {
 		return fmt.Errorf("not found target bin files")
 	}
 
+	tmpBinList := make([]string, 0)
 	for _, file := range targetBinFiles {
 		src := filepath.Join(artifactBinDir, file)
 		dst := filepath.Join(currentBinDir, file)
-		err := CopyFile(src, dst)
+
+		copiedPath, err := copyFatimaBinaries(src, dst)
 		if err != nil {
-			if !strings.Contains(err.Error(), "text file busy") {
-				return fmt.Errorf("copyfile fail : %s", err.Error())
-			}
-			CopyToTemp(src, dst)
+			return fmt.Errorf("copyfile fail : %s", err.Error())
+		}
+		if copiedPath != dst {
+			tmpBinList = append(tmpBinList, copiedPath)
+		}
+
+		f, _ := os.Stat(copiedPath)
+		if !isExecOwner(f.Mode()) {
+			mode := f.Mode() | 0700
+			_ = os.Chmod(copiedPath, mode)
 		}
 		fmt.Printf("%s ", file)
 	}
 	fmt.Printf("\n")
+	for _, tmpBin := range tmpBinList {
+		fmt.Printf("\n>>> binary copied to %s. YOU HAVE TO MOVE IT\n", tmpBin)
+		fmt.Printf("\n$ cp %s $FATIMA_HOME/bin\n", tmpBin)
+	}
 
 	return nil
 }
 
-func CopyToTemp(src, dst string) {
+// copyBinary 바이너리 파일을 복사한다.
+// 정상적일 경우 파라미터로 요청한 dst 경로를 리턴한다
+// 만약 에러가 있거나 에러가 없더라도 dst 와 다른 경로를 리턴할 수 있다 (이 경우 dst는 temp 에 복사된 경로일 것이다)
+func copyFatimaBinaries(src, dst string) (copiedPath string, err error) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		copiedPath, err = copyBinaryFile(src, dst)
+		cancel()
+	}()
+
+	select {
+	case <-time.After(time.Second):
+		copiedPath = CopyToTemp(src, dst)
+	case <-ctx.Done():
+	}
+
+	return
+}
+
+func copyBinaryFile(src, dst string) (string, error) {
+	err := CopyFile(src, dst)
+	if err != nil {
+		if !strings.Contains(err.Error(), "text file busy") {
+			return "", fmt.Errorf("copyfile fail : %s", err.Error())
+		}
+		tmp := CopyToTemp(src, dst)
+		return tmp, nil
+	}
+	return dst, nil
+}
+
+func isExecOwner(mode os.FileMode) bool {
+	return mode&0100 != 0
+}
+
+func CopyToTemp(src, dst string) string {
 	dst = filepath.Join(os.TempDir(), filepath.Base(dst))
 	err := CopyFile(src, dst)
 	if err != nil {
 		fmt.Printf("\ncopy to temp [%s] : %s\n", dst, err.Error())
 	}
+	return dst
 }
