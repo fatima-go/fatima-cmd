@@ -32,6 +32,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -171,6 +173,10 @@ func isSuccess(m map[string]interface{}) bool {
 	return false
 }
 
+const (
+	yyyyMMddHHmmss = "2006-01-02 15:04:05"
+)
+
 func CallFarUpload(url string, flags FatimaCmdFlags, desc map[string]interface{}, path string) (http.Header, []byte, error) {
 	b, _ := json.Marshal(desc)
 
@@ -208,7 +214,7 @@ func CallFarUpload(url string, flags FatimaCmdFlags, desc map[string]interface{}
 		fmt.Printf("body : json[%v], file[%s]\n", desc, path)
 	}
 
-	fmt.Println("> start transfer...")
+	fmt.Printf("%s start transfer...\n", time.Now().Format(yyyyMMddHHmmss))
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, nil, err
@@ -259,20 +265,117 @@ func newfileUploadRequest(uri string, far string, path string) (*http.Request, e
 		return nil, err
 	}
 
-	reader := CustomBodyReader{buff: body}
+	reader := &CustomBodyReader{buff: body}
 	req, err := http.NewRequest("POST", uri, reader)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	return req, err
 }
 
 type CustomBodyReader struct {
-	buff *bytes.Buffer
+	written int
+	buff    *bytes.Buffer
 }
 
-func (c CustomBodyReader) Read(p []byte) (n int, err error) {
+func (c *CustomBodyReader) Read(p []byte) (n int, err error) {
 	n, err = c.buff.Read(p)
 	if errors.Is(err, io.EOF) {
-		fmt.Printf("> transfer finished...\n> waiting server response...\n")
+		fmt.Printf("%s transfer %s finished.  waiting server response...\n",
+			time.Now().Format(yyyyMMddHHmmss), ByteSize(uint64(c.written)))
 	}
+	c.written += n
 	return
+}
+
+const (
+	BYTE = 1.0 << (10 * iota)
+	KILOBYTE
+	MEGABYTE
+	GIGABYTE
+	TERABYTE
+)
+
+var (
+	bytesPattern             = regexp.MustCompile(`(?i)^(-?\d+(?:\.\d+)?)([KMGT]i?B?|B)$`)
+	invalidByteQuantityError = errors.New("byte quantity must be a positive integer with a unit of measurement like M, MB, MiB, G, GiB, or GB")
+)
+
+// ByteSize returns a human-readable byte string of the form 10M, 12.5K, and so forth.  The following units are available:
+//
+//	T: Terabyte
+//	G: Gigabyte
+//	M: Megabyte
+//	K: Kilobyte
+//	B: Byte
+//
+// The unit that results in the smallest number greater than or equal to 1 is always chosen.
+func ByteSize(bytes uint64) string {
+	unit := ""
+	value := float32(bytes)
+
+	switch {
+	case bytes >= TERABYTE:
+		unit = "T"
+		value = value / TERABYTE
+	case bytes >= GIGABYTE:
+		unit = "G"
+		value = value / GIGABYTE
+	case bytes >= MEGABYTE:
+		unit = "M"
+		value = value / MEGABYTE
+	case bytes >= KILOBYTE:
+		unit = "K"
+		value = value / KILOBYTE
+	case bytes >= BYTE:
+		unit = "B"
+	case bytes == 0:
+		return "0"
+	}
+
+	stringValue := fmt.Sprintf("%.1f", value)
+	stringValue = strings.TrimSuffix(stringValue, ".0")
+	return fmt.Sprintf("%s%s", stringValue, unit)
+}
+
+// ToMegabytes parses a string formatted by ByteSize as megabytes.
+func ToMegabytes(s string) (uint64, error) {
+	bytes, err := ToBytes(s)
+	if err != nil {
+		return 0, err
+	}
+
+	return bytes / MEGABYTE, nil
+}
+
+// ToBytes parses a string formatted by ByteSize as bytes. Note binary-prefixed and SI prefixed units both mean a base-2 units
+// KB = K = KiB	= 1024
+// MB = M = MiB = 1024 * K
+// GB = G = GiB = 1024 * M
+// TB = T = TiB = 1024 * G
+func ToBytes(s string) (uint64, error) {
+	parts := bytesPattern.FindStringSubmatch(strings.TrimSpace(s))
+	if len(parts) < 3 {
+		return 0, invalidByteQuantityError
+	}
+
+	value, err := strconv.ParseFloat(parts[1], 64)
+	if err != nil || value <= 0 {
+		return 0, invalidByteQuantityError
+	}
+
+	var bytes uint64
+	unit := strings.ToUpper(parts[2])
+	switch unit[:1] {
+	case "T":
+		bytes = uint64(value * TERABYTE)
+	case "G":
+		bytes = uint64(value * GIGABYTE)
+	case "M":
+		bytes = uint64(value * MEGABYTE)
+	case "K":
+		bytes = uint64(value * KILOBYTE)
+	case "B":
+		bytes = uint64(value * BYTE)
+	}
+
+	return bytes, nil
 }
