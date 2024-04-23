@@ -28,6 +28,7 @@ import (
 	"github.com/fatima-go/fatima-cmd/share"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 var usage = `usage: %s [option] file
@@ -45,6 +46,10 @@ optional arguments:
   -p string
         Host and Package. e.g) localhost:default
 `
+
+const (
+	yyyyMMddHHmmss = "2006-01-02 15:04:05"
+)
 
 func main() {
 	flag.Usage = func() {
@@ -80,6 +85,7 @@ func main() {
 		return
 	}
 
+	fmt.Printf("%s login success...\n", time.Now().Format(yyyyMMddHHmmss))
 	if platformSupport {
 		ropackResp, err := jupiter.GetPackages(fatimaFlags)
 		if err != nil {
@@ -124,6 +130,7 @@ func findPlatform(ropackResp RopackResp, flags share.FatimaCmdFlags, group strin
 		if err != nil {
 			return "", err
 		}
+		fmt.Printf("%s target %s::%s\n", time.Now().Format(yyyyMMddHHmmss), deploy.Host, deploy.Platform)
 		return deploy.Platform.String(), nil
 	}
 
@@ -139,6 +146,7 @@ func findPlatform(ropackResp RopackResp, flags share.FatimaCmdFlags, group strin
 			return "", err
 		}
 
+		fmt.Printf("%s target %s:%s\n", time.Now().Format(yyyyMMddHHmmss), deploy.Host, deploy.Platform)
 		return deploy.Platform.String(), nil
 	}
 
@@ -152,6 +160,7 @@ func findPlatform(ropackResp RopackResp, flags share.FatimaCmdFlags, group strin
 			return "", fmt.Errorf("empty deploy for group %s", group)
 		}
 
+		fmt.Printf("%s target group %s::%s\n", time.Now().Format(yyyyMMddHHmmss), deployment.GroupName, deployment.Deploy[0].Platform)
 		return deployment.Deploy[0].Platform.String(), nil
 	}
 
@@ -161,5 +170,6 @@ func findPlatform(ropackResp RopackResp, flags share.FatimaCmdFlags, group strin
 		return "", err
 	}
 
+	fmt.Printf("%s target %s::%s\n", time.Now().Format(yyyyMMddHHmmss), deployment.Host, deployment.Platform)
 	return deployment.Platform.String(), nil
 }

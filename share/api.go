@@ -23,6 +23,7 @@ package share
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -170,6 +171,10 @@ func isSuccess(m map[string]interface{}) bool {
 	return false
 }
 
+const (
+	yyyyMMddHHmmss = "2006-01-02 15:04:05"
+)
+
 func CallFarUpload(url string, flags FatimaCmdFlags, desc map[string]interface{}, path string) (http.Header, []byte, error) {
 	b, _ := json.Marshal(desc)
 
@@ -207,6 +212,8 @@ func CallFarUpload(url string, flags FatimaCmdFlags, desc map[string]interface{}
 		fmt.Printf("body : json[%v], file[%s]\n", desc, path)
 	}
 
+	f, _ := os.Stat(path)
+	fmt.Printf("%s start transfer : %s ", time.Now().Format(yyyyMMddHHmmss), ByteSize(uint64(f.Size())))
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, nil, err
@@ -257,7 +264,35 @@ func newfileUploadRequest(uri string, far string, path string) (*http.Request, e
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", uri, body)
+	reader := &CustomBodyReader{buff: body, reportSize: reportIntervalSize}
+	req, err := http.NewRequest("POST", uri, reader)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	return req, err
 }
+
+type CustomBodyReader struct {
+	reportSize int
+	written    int
+	buff       *bytes.Buffer
+}
+
+func (c *CustomBodyReader) Read(p []byte) (n int, err error) {
+	n, err = c.buff.Read(p)
+	if errors.Is(err, io.EOF) {
+		fmt.Printf("\n%s transfer finished. waiting server response...\n",
+			time.Now().Format(yyyyMMddHHmmss))
+	}
+	c.written += n
+
+	// 1M 단위로 출력하자..
+	if c.written > c.reportSize {
+		fmt.Printf(".")
+		c.reportSize += reportIntervalSize
+	}
+
+	return
+}
+
+const (
+	reportIntervalSize = 100 * 1024 // 100k
+)
