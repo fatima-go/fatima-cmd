@@ -64,7 +64,7 @@ func PrintPackages(flags share.FatimaCmdFlags) error {
 /*
 	type Deployment struct {
 		Host       string
-		Name       string
+		ProcessName       string
 		Endpoint   string
 		RegistDate string
 		Status     string
@@ -74,7 +74,7 @@ func PrintPackages(flags share.FatimaCmdFlags) error {
 	func (p Deployment) ToList() []string {
 		list := make([]string, 0)
 		list = append(list, p.Host)
-		list = append(list, p.Name)
+		list = append(list, p.ProcessName)
 		list = append(list, p.Endpoint)
 		list = append(list, p.RegistDate)
 		list = append(list, p.Status)
@@ -85,7 +85,7 @@ func PrintPackages(flags share.FatimaCmdFlags) error {
 	func buildDeployment(m map[string]interface{}) Deployment {
 		p := Deployment{}
 		p.Host = "-"
-		p.Name = "-"
+		p.ProcessName = "-"
 		p.Endpoint = "-"
 		p.RegistDate = "-"
 		p.Status = "-"
@@ -94,7 +94,7 @@ func PrintPackages(flags share.FatimaCmdFlags) error {
 		for k, v := range m {
 			switch k {
 			case "name":
-				p.Name = share.AsString(v)
+				p.ProcessName = share.AsString(v)
 			case "host":
 				p.Host = share.AsString(v)
 			case "endpoint":

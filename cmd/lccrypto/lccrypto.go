@@ -13,7 +13,7 @@ const (
 	usageTemplate = `Usage: {{if .Runnable}}{{.UseLine}}{{end}}
 {{if .HasAvailableSubCommands}}{{$cmds := .Commands}}
 Available Commands:{{range $cmds}}
-  {{rpad .Name .NamePadding }} {{ .Short}}{{end}}{{end}}
+  {{rpad .ProcessName .NamePadding }} {{ .Short}}{{end}}{{end}}
 {{if .HasAvailableSubCommands}}{{else}}{{if .HasAvailableLocalFlags}}
 Flags:
 {{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{end}}{{if .HasAvailableSubCommands}}

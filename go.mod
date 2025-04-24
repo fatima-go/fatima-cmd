@@ -3,7 +3,7 @@ module github.com/fatima-go/fatima-cmd
 go 1.21
 
 require (
-	github.com/fatima-go/fatima-core v1.1.2
+	github.com/fatima-go/fatima-core v1.1.5
 	github.com/jedib0t/go-pretty/v6 v6.5.4
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/pkg/errors v0.9.1
@@ -15,7 +15,7 @@ require (
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/fatima-go/fatima-log v1.0.0 // indirect
+	github.com/fatima-go/fatima-log v1.0.1 // indirect
 	github.com/getsentry/sentry-go v0.20.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
