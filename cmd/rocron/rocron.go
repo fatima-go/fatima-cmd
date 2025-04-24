@@ -37,22 +37,24 @@ positional arguments:
 
 optional arguments:
   -d    Debug mode
+  -l    listing all batch jobs
   -p string
         Host and Package. e.g) localhost:default
 `
 
+var listingOption = false
+
 func main() {
 	flag.Usage = func() {
-		fmt.Printf(string(usage), os.Args[0])
+		fmt.Printf(usage, os.Args[0])
 	}
 
+	flag.BoolVar(&listingOption, "l", false, "listing all batch jobs")
 	fatimaFlags, err := share.BuildFatimaCmdFlags()
 	if err != nil {
 		fmt.Printf("fail to parse : %s", err.Error())
 		return
 	}
-
-	flag.Parse()
 
 	if len(flag.Args()) > 0 {
 		flag.Usage()
@@ -62,6 +64,11 @@ func main() {
 	err = share.GetJunoEndpoint(&fatimaFlags)
 	if err != nil {
 		fmt.Printf("endpoint retrieve fail : %s\n", err.Error())
+		return
+	}
+
+	if listingOption {
+		summaryBatchJobs(fatimaFlags)
 		return
 	}
 
@@ -174,4 +181,32 @@ func interactJobArgs(job juno.CronJob) string {
 	reader := bufio.NewReader(os.Stdin)
 	args, _ = reader.ReadString('\n')
 	return args
+}
+
+func summaryBatchJobs(fatimaFlags share.FatimaCmdFlags) {
+
+	batchList, err := juno.SummaryCronCommands(fatimaFlags)
+	if err != nil {
+		fmt.Printf("fail to get cron summary : %s\n", err.Error())
+		return
+	}
+
+	if len(batchList.List) == 0 {
+		fmt.Printf("no batch jobs\n")
+		return
+	}
+
+	for _, batch := range batchList.List {
+		fmt.Printf("\n---------------------------------------------------------------------\nHOUR %d\n", batch.Hour)
+		for _, process := range batch.ProcessList {
+			fmt.Printf(" - %s\n", process.Process)
+			for _, job := range process.Jobs {
+				if len(job.Desc) > 0 {
+					fmt.Printf("   + %s : %s [%s]\n", job.Name, job.Spec, job.Desc)
+				} else {
+					fmt.Printf("   + %s : %s\n", job.Name, job.Spec)
+				}
+			}
+		}
+	}
 }

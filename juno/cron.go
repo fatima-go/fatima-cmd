@@ -28,20 +28,11 @@ import (
 )
 
 const (
-	v1CronList  = "cron/list/v1"
-	v1CronRerun = "cron/rerun/v1"
+	v1CronList    = "cron/list/v1"
+	v1CronRerun   = "cron/rerun/v1"
+	v1CronSummary = "cron/summary/v1"
 )
 
-//	type FatimaCronCommands struct {
-//		Commands []struct {
-//			Jobs []struct {
-//				Desc   string `json:"desc"`
-//				Name   string `json:"name"`
-//				Sample string `json:"sample"`
-//			} `json:"jobs"`
-//			Process string `json:"process"`
-//		} `json:"commands"`
-//	}
 type FatimaCronCommands struct {
 	Commands []CronCommand `json:"commands"`
 }
@@ -55,6 +46,58 @@ type CronJob struct {
 	Desc   string `json:"desc"`
 	Name   string `json:"name"`
 	Sample string `json:"sample"`
+	Spec   string `json:"spec"`
+}
+
+type BatchList struct {
+	List []HourlyBatch `json:"batches"`
+}
+
+type HourlyBatch struct {
+	Hour        int           `json:"hour"`
+	ProcessList []CronCommand `json:"processes"`
+}
+
+//type ProcessBatch struct {
+//	ProcessName string     `json:"process"`
+//	JobList     []BatchJob `json:"jobs"`
+//}
+//
+//type BatchJob struct {
+//	Spec        string `json:"spec"`
+//	Name        string `json:"name"`
+//	Description string `json:"desc"`
+//}
+
+func SummaryCronCommands(flags share.FatimaCmdFlags) (BatchList, error) {
+	var batchList BatchList
+
+	url := flags.BuildJunoServiceUrl(v1CronSummary)
+
+	headers, resp, err := callJuno(url, flags, nil)
+	if err != nil {
+		return batchList, err
+	}
+
+	share.PrintPreface(headers, resp)
+
+	summaryObj := resp["summary"]
+	summary, ok := summaryObj.(map[string]interface{})
+	if !ok {
+		return batchList, fmt.Errorf("invalid summary structure")
+	}
+	batchesObj, ok := summary["batches"]
+	if !ok {
+		return batchList, fmt.Errorf("invalid batches structure")
+	}
+
+	b, _ := json.Marshal(batchesObj)
+	err = json.Unmarshal(b, &batchList)
+	if err != nil {
+		return batchList, fmt.Errorf("invalid cron batches sturcture : %s", err.Error())
+	}
+
+	return batchList, nil
 }
 
 func ListCronCommands(flags share.FatimaCmdFlags) (FatimaCronCommands, error) {
