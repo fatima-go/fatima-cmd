@@ -25,7 +25,59 @@ import (
 	"fmt"
 	"github.com/fatima-go/fatima-cmd/share"
 	"net/http"
+	"strings"
 )
+
+func NewSortingOption(sort string) SortingOption {
+	s := SortingOption{}
+	s.sortType = ToSortType(sort)
+	if s.sortType == SortTypeNone {
+		s.sortType = SortTypeName // default
+	}
+	s.order = OrderAsc // default
+	return s
+}
+
+type SortingOption struct {
+	sortType SortType
+	order    Order
+}
+
+const (
+	SortTypeNone  = "none"
+	SortTypeName  = "name"
+	SortTypeIndex = "index"
+)
+
+type SortType string
+
+func ToSortType(s string) SortType {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "name":
+		return SortTypeName
+	case "index":
+		return SortTypeIndex
+	}
+	return SortTypeNone
+}
+
+const (
+	OrderNone = "none"
+	OrderAsc  = "asc"
+	OrderDesc = "desc"
+)
+
+type Order string
+
+func ToOrder(s string) Order {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "asc":
+		return OrderAsc
+	case "desc":
+		return OrderDesc
+	}
+	return OrderNone
+}
 
 func callJuno(url string, flags share.FatimaCmdFlags, b []byte) (http.Header, map[string]interface{}, error) {
 	headers, resp, err := share.CallFatimaApi(url, flags, b)
