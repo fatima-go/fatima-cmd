@@ -24,9 +24,10 @@ import (
 	"fmt"
 	"github.com/fatima-go/fatima-cmd/share"
 	"sort"
+	"strings"
 )
 
-func PrintJunoPackage(flags share.FatimaCmdFlags) error {
+func PrintJunoPackage(flags share.FatimaCmdFlags, sortingOpt SortingOption) error {
 	url := flags.BuildJunoServiceUrl(v1PackResourceUrl)
 
 	headers, resp, err := callJuno(url, flags, nil)
@@ -43,7 +44,7 @@ func PrintJunoPackage(flags share.FatimaCmdFlags) error {
 	share.PrintPreface(headers, resp)
 
 	data := make([][]string, 0)
-	for _, v := range buildProcessInfoList(resp["process_list"]) {
+	for _, v := range buildProcessInfoList(resp["process_list"], sortingOpt) {
 		data = append(data, v.ToList())
 	}
 
@@ -145,7 +146,7 @@ func buildProcessInfo(m map[string]interface{}) ProcessInfo {
 	return p
 }
 
-func buildProcessInfoList(data interface{}) []ProcessInfo {
+func buildProcessInfoList(data interface{}, sortingOpt SortingOption) []ProcessInfo {
 	list := make([]ProcessInfo, 0)
 
 	if val, ok := data.([]interface{}); ok {
@@ -156,8 +157,33 @@ func buildProcessInfoList(data interface{}) []ProcessInfo {
 		}
 	}
 
-	sort.Sort(ByIndex(list))
+	switch sortingOpt.sortType {
+	case SortTypeName:
+		list = sortWithName(list, sortingOpt.order)
+	case SortTypeIndex:
+		sort.Sort(ByIndex(list))
+	}
+
 	return list
+}
+
+func sortWithName(list []ProcessInfo, order Order) []ProcessInfo {
+	if order == OrderNone {
+		return list
+	}
+
+	orderedProcInfo := make([]ProcessInfo, 0)
+	for _, groupProcInfo := range splitProcessWithGroup(list) {
+		if !IsOpmGroup(groupProcInfo.GroupName) {
+			if order == OrderAsc {
+				sort.Sort(ByProcessNameAsc(groupProcInfo.Entries))
+			} else if order == OrderDesc {
+				sort.Sort(ByProcessNameDesc(groupProcInfo.Entries))
+			}
+		}
+		orderedProcInfo = append(orderedProcInfo, groupProcInfo.Entries...)
+	}
+	return orderedProcInfo
 }
 
 type ByIndex []ProcessInfo
@@ -165,3 +191,64 @@ type ByIndex []ProcessInfo
 func (a ByIndex) Len() int           { return len(a) }
 func (a ByIndex) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByIndex) Less(i, j int) bool { return a[i].Index < a[j].Index }
+
+type ByProcessNameAsc []ProcessInfo
+
+func (n ByProcessNameAsc) Len() int      { return len(n) }
+func (n ByProcessNameAsc) Swap(i, j int) { n[i], n[j] = n[j], n[i] }
+func (n ByProcessNameAsc) Less(i, j int) bool {
+	return n[i].Name < n[j].Name
+}
+
+type ByProcessNameDesc []ProcessInfo
+
+func (n ByProcessNameDesc) Len() int      { return len(n) }
+func (n ByProcessNameDesc) Swap(i, j int) { n[i], n[j] = n[j], n[i] }
+func (n ByProcessNameDesc) Less(i, j int) bool {
+	return n[i].Name > n[j].Name
+}
+
+func splitProcessWithGroup(list []ProcessInfo) []*GroupProcessInfo {
+	groupList := make([]*GroupProcessInfo, 0)
+
+	for _, proc := range list {
+		info := findGroupInList(groupList, proc.Group)
+		if info == nil {
+			info = &GroupProcessInfo{}
+			info.GroupName = proc.Group
+			groupList = append(groupList, info)
+		}
+		info.addEntry(proc)
+	}
+
+	return groupList
+}
+
+func findGroupInList(list []*GroupProcessInfo, groupName string) *GroupProcessInfo {
+	for _, record := range list {
+		if record.GroupName == groupName {
+			return record
+		}
+	}
+	return nil
+}
+
+type GroupProcessInfo struct {
+	GroupName string
+	Entries   []ProcessInfo
+}
+
+func (g *GroupProcessInfo) addEntry(entry ProcessInfo) {
+	if g.Entries == nil {
+		g.Entries = make([]ProcessInfo, 0)
+	}
+	g.Entries = append(g.Entries, entry)
+}
+
+const (
+	ProcessGroupOpm = "opm"
+)
+
+func IsOpmGroup(opm string) bool {
+	return strings.ToLower(opm) == ProcessGroupOpm
+}

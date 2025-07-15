@@ -41,9 +41,9 @@ positional arguments:
 
 optional arguments:
   -d    Debug mode
-  -g string
+  -g    string
         package group name
-  -p string
+  -p    string
         Host and Package. e.g) localhost:default
 `
 
@@ -53,7 +53,7 @@ const (
 
 func main() {
 	flag.Usage = func() {
-		fmt.Printf(string(usage), os.Args[0])
+		fmt.Printf(usage, os.Args[0])
 	}
 
 	var group string

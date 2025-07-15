@@ -21,12 +21,34 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"github.com/fatima-go/fatima-cmd/juno"
 	"github.com/fatima-go/fatima-cmd/share"
+	"os"
 )
 
+var usage = `usage: %s [option]
+
+display package report
+
+optional arguments:
+  -d    Debug mode
+  -s    string
+        sorting option. name=byNameAsc, index=byRegisterIndex. default name
+  -p    string
+        Host and Package. e.g) localhost:default
+`
+
 func main() {
+	flag.Usage = func() {
+		fmt.Printf(usage, os.Args[0])
+	}
+
+	var sort string
+
+	flag.StringVar(&sort, "s", "", "sorting option")
+
 	fatimaFlags, err := share.BuildFatimaCmdFlags()
 	if err != nil {
 		fmt.Printf("fail to build argument for execution : %s", err.Error())
@@ -39,10 +61,9 @@ func main() {
 		return
 	}
 
-	err = juno.PrintJunoPackage(fatimaFlags)
+	err = juno.PrintJunoPackage(fatimaFlags, juno.NewSortingOption(sort))
 	if err != nil {
 		fmt.Printf("fail to get juno package : %s\n", err.Error())
 		return
 	}
-
 }
