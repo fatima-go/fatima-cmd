@@ -22,9 +22,10 @@ package share
 
 import (
 	"fmt"
-	"github.com/olekukonko/tablewriter"
 	"net/http"
 	"os"
+
+	"github.com/olekukonko/tablewriter"
 )
 
 func PrintPreface(respHeader http.Header, body map[string]interface{}) {
