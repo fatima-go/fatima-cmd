@@ -26,6 +26,7 @@ import (
 	"os"
 
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 )
 
 func PrintPreface(respHeader http.Header, body map[string]interface{}) {
@@ -39,9 +40,10 @@ func PrintPreface(respHeader http.Header, body map[string]interface{}) {
 }
 
 func PrintTable(headers []string, data [][]string) {
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader(headers)
-	table.SetAlignment(tablewriter.ALIGN_LEFT)
-	table.AppendBulk(data)
-	table.Render() // Send output
+	table := tablewriter.NewTable(os.Stdout,
+		tablewriter.WithHeader(headers),
+		tablewriter.WithRowAlignment(tw.AlignLeft),
+	)
+	_ = table.Bulk(data)
+	_ = table.Render()
 }

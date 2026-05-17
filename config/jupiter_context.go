@@ -24,7 +24,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/fatima-go/fatima-cmd/cipher"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 	"os"
 	"os/user"
 	"path/filepath"
