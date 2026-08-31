@@ -21,27 +21,42 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"os"
+
 	"github.com/fatima-go/fatima-cmd/juno"
 	"github.com/fatima-go/fatima-cmd/share"
 )
 
 func main() {
+	flag.StringVar(&binaryFilename, "b", "", "download binary file from juno data folder")
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	fatimaFlags, err := share.BuildFatimaCmdFlags()
 	if err != nil {
-		fmt.Printf("fail to build argument for execution : %s", err.Error())
-		return
+		return fmt.Errorf("fail to build argument for execution: %w", err)
 	}
 
 	err = share.GetJunoEndpoint(&fatimaFlags)
 	if err != nil {
-		fmt.Printf("endpoint retrieve fail : %s\n", err.Error())
-		return
+		return fmt.Errorf("endpoint retrieve fail: %w", err)
 	}
 
-	err = juno.PrintJunoClipboard(fatimaFlags)
-	if err != nil {
-		fmt.Printf("fail to contact juno : %s\n", err.Error())
-		return
+	if binaryFilename != "" {
+		err = juno.DownloadJunoClipBinary(fatimaFlags, binaryFilename)
+	} else {
+		err = juno.PrintJunoClipboard(fatimaFlags)
 	}
+	if err != nil {
+		return fmt.Errorf("fail to contact juno: %w", err)
+	}
+	return nil
 }
+
+var binaryFilename string

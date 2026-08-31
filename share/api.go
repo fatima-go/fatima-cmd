@@ -108,6 +108,66 @@ func CallFatimaApi(url string, flags FatimaCmdFlags, b []byte) (http.Header, []b
 	return resp.Header, respBytes, nil
 }
 
+// CallFatimaStream sends a Fatima API request without applying a timeout to
+// the response body. The caller must close the returned response body.
+func CallFatimaStream(url string, flags FatimaCmdFlags, b []byte, extraHeaders map[string]string) (*http.Response, error) {
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout: 10 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout:   2 * time.Second,
+		ResponseHeaderTimeout: 15 * time.Second,
+		DisableKeepAlives:     true,
+	}
+
+	client := &http.Client{
+		Transport: transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	var body io.Reader
+	if len(b) > 0 {
+		body = bytes.NewReader(b)
+	}
+	req, err := http.NewRequest(http.MethodPost, url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json;charset=UTF-8")
+	for key, value := range flags.BuildHeader() {
+		req.Header.Set(key, value)
+	}
+	for key, value := range extraHeaders {
+		req.Header.Set(key, value)
+	}
+
+	if flags.Debug {
+		h, _ := json.Marshal(req.Header)
+		fmt.Printf("=== POST %s ============>\n", url)
+		fmt.Printf("headers : %v\n", string(h))
+		if len(b) > 0 {
+			fmt.Printf("body : %v\n", screenPasswordString(b))
+		} else {
+			fmt.Printf("body : \n")
+		}
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if flags.Debug {
+		fmt.Printf("<== %s =============\n", resp.Status)
+		h, _ := json.Marshal(resp.Header)
+		fmt.Printf("headers : %v\n", string(h))
+	}
+
+	return resp, nil
+}
+
 func screenPasswordString(b []byte) string {
 	m := make(map[string]interface{})
 	err := json.Unmarshal(b, &m)
