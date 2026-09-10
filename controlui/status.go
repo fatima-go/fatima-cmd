@@ -57,9 +57,6 @@ func sortedProcesses(c *api.ProcessCatalog, order, filter string) []*api.Process
 func (m model) visibleProcesses() []*api.ProcessEntry {
 	return sortedProcesses(m.catalog, m.opts.Sort, m.filter)
 }
-func processDetail(p *api.ProcessEntry) []string {
-	return []string{p.Name + " / " + p.Group, "상태: " + p.State + " / PID: " + p.Pid, "시작: " + p.StartedAt, "CPU: " + p.Cpu + " / MEM: " + p.Memory, "FD: " + p.Fd + " / THR: " + p.Threads + " / IC: " + p.Ic}
-}
 func printProcesses(c *api.ProcessCatalog, order, timezone string) error {
 	loc := time.Local
 	if timezone != "" {

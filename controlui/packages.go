@@ -1,8 +1,10 @@
 package controlui
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,28 +89,6 @@ func localDate(seconds int64) string {
 	}
 	return time.Unix(seconds, 0).Local().Format("2006-01-02 15:04:05")
 }
-func (m model) packageRows(height, width int) []string {
-	rows := m.visiblePackages()
-	out := []string{fmt.Sprintf("패키지 %d개 · / 그룹·패키지·상태 검색", len(rows))}
-	if len(rows) == 0 {
-		return append(out, "조건에 맞는 패키지가 없습니다.")
-	}
-	if m.stage == "select" {
-		room := min(5, max(1, height/2-3))
-		start := max(0, m.cursor-room+1)
-		for i := start; i < min(len(rows), start+room); i++ {
-			p := rows[i]
-			mark := "  "
-			if i == m.cursor {
-				mark = "▶ "
-			}
-			out = append(out, line(fmt.Sprintf("%s%s / %s  %s", mark, p.Target.Group, p.Target.PackageId, p.State), width))
-		}
-		out = append(out, "──────── 상세 ────────")
-	}
-	p := rows[min(m.cursor, len(rows)-1)]
-	return append(out, p.Target.Group+" / "+p.Target.PackageId, "주소: "+p.Target.Endpoint, "플랫폼: "+p.Target.Platform, "상태: "+p.State+" / "+p.Transport, "등록: "+localDate(p.RegisteredAt), "확인: "+localDate(p.CheckedAt), p.Detail, "s: 이 패키지의 rodis 열기 (종료하면 목록 복귀)")
-}
 
 type processScreenClosed struct{ err error }
 
@@ -129,7 +109,31 @@ func (m model) openProcessScreen() tea.Cmd {
 		return func() tea.Msg { return processScreenClosed{err} }
 	}
 	id := m.visiblePackages()[m.cursor].Target.PackageId
-	return tea.ExecProcess(exec.Command(filepath.Join(filepath.Dir(binary), "rodis"), "-p", id), func(err error) tea.Msg { return processScreenClosed{err} })
+	return tea.Exec(&processReport{cmd: exec.Command(filepath.Join(filepath.Dir(binary), "rodis"), "-p", id)}, func(err error) tea.Msg { return processScreenClosed{err} })
+}
+
+// rodis is a single HTTP report again. Keep the report visible while Bubble
+// Tea has released the terminal, then resume the package screen on Enter.
+type processReport struct {
+	cmd    *exec.Cmd
+	input  io.Reader
+	output io.Writer
+}
+
+func (p *processReport) SetStdin(r io.Reader)  { p.input = r; p.cmd.Stdin = r }
+func (p *processReport) SetStdout(w io.Writer) { p.output = w; p.cmd.Stdout = w }
+func (p *processReport) SetStderr(w io.Writer) { p.cmd.Stderr = w }
+func (p *processReport) Run() error {
+	err := p.cmd.Run()
+	if err != nil {
+		fmt.Fprintln(p.output, "rodis:", err)
+	}
+	fmt.Fprint(p.output, "\nEnter: 패키지 목록으로 돌아가기 ")
+	_, readErr := bufio.NewReader(p.input).ReadString('\n')
+	if err != nil {
+		return err
+	}
+	return readErr
 }
 func printPackages(c *api.PackageCatalog) error {
 	var rows [][]string

@@ -50,3 +50,14 @@ func TestLegacyCannotLoseRequestIdentity(t *testing.T) {
 		t.Fatal("ordinary old syntax must fall back")
 	}
 }
+
+func TestReturningFromHTTPReportKeepsSelectedPackage(t *testing.T) {
+	m := inventoryFixture("ropack")
+	m.cursor, m.stage = 20, "detail"
+	next, cmd := m.Update(processScreenClosed{})
+	updated := next.(model)
+	defer updated.liveCancel()
+	if cmd == nil || updated.cursor != 20 || updated.stage != "detail" {
+		t.Fatal("returning from rodis lost the selected package")
+	}
+}

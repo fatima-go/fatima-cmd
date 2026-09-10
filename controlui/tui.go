@@ -147,6 +147,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.packages = v.packages
 		m.cursor = 0
+		m.offset = 0
 		m.status = "작업 선택"
 		if m.opts.Command == "roproc" {
 			if m.opts.Action != "" {
@@ -242,7 +243,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "rodis 실행 실패 · r 목록 갱신"
 			return m, nil
 		}
-		return m, m.load()
+		m.status = "패키지 목록 복귀 · 갱신 중"
+		return m.watchPackages()
 	case statusStream:
 		if v.epoch != m.liveEpoch {
 			return m, nil
@@ -420,6 +422,42 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		switch key {
+		case "tab":
+			if m.inventoryLayout() {
+				if m.stage == "select" {
+					m.stage = "detail"
+				} else {
+					m.stage = "select"
+				}
+				m.offset = 0
+			}
+		case "pgup", "pgdown", "home", "end":
+			if !m.inventoryLayout() {
+				return m, nil
+			}
+			if m.stage == "select" {
+				switch key {
+				case "pgup":
+					m.cursor = max(0, m.cursor-m.pageSize())
+				case "pgdown":
+					m.cursor = min(max(0, m.count()-1), m.cursor+m.pageSize())
+				case "home":
+					m.cursor = 0
+				case "end":
+					m.cursor = max(0, m.count()-1)
+				}
+			} else {
+				switch key {
+				case "pgup":
+					m.offset = max(0, m.offset-m.pageSize())
+				case "pgdown":
+					m.offset += m.pageSize()
+				case "home":
+					m.offset = 0
+				case "end":
+					m.offset = 1 << 20
+				}
+			}
 		case "a":
 			if m.opts.Command == "roproc" && (m.stage == "select" || m.stage == "detail") && m.client != nil {
 				m.opts.Action = "add"
@@ -432,7 +470,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.err = nil
 			}
 		case "/":
-			if m.stage == "select" && (m.catalog != nil || m.packages != nil) {
+			if m.inventoryLayout() {
+				m.stage = "select"
+				m.offset = 0
 				m.editing = "filter"
 				m.input = m.filter
 			}
@@ -500,6 +540,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.offset++
 			}
 		case "esc", "n":
+			if m.stage == "detail" {
+				m.stage = "select"
+				m.offset = 0
+				return m, nil
+			}
 			if m.op == nil || operations.Terminal(m.op.State) {
 				m.stage = "select"
 				m.op = nil
@@ -528,10 +573,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.opts.Command == "rodis" || m.opts.Command == "ropack" || (m.opts.Command == "roproc" && (m.stage == "select" || m.stage == "detail")) {
 				if m.count() > 0 {
 					m.stage = "detail"
+					m.offset = 0
 				}
 				return m, nil
 			}
-			if m.stage == "select" && m.catalog != nil && m.count() > 0 {
+			if (m.stage == "select" || m.stage == "detail") && m.catalog != nil && m.count() > 0 {
 				if len(m.opts.Targets) == 0 {
 					m.opts.Targets = []string{m.visibleProcesses()[m.cursor].Name}
 				}
@@ -571,6 +617,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
+	if m.inventoryLayout() && m.stage == "detail" {
+		m.offset = min(m.offset, m.detailScrollLimit())
+	}
 	return m, nil
 }
 func clean(s string) string {
@@ -593,6 +642,7 @@ func (m model) View() string {
 	bodyHeight := m.height - 9
 	sideWidth := 16
 	mainWidth := width - sideWidth - 3
+	inventory := m.inventoryLayout()
 	blue := lipgloss.Color("75")
 	grey := lipgloss.Color("240")
 	color := lipgloss.Color("214")
@@ -641,10 +691,8 @@ func (m model) View() string {
 		} else {
 			content = append(content, "서버 기능과 인증을 확인하고 있습니다.")
 		}
-	} else if m.opts.Command == "ropack" && m.packages != nil {
-		content = m.packageRows(bodyHeight, mainWidth-2)
-	} else if m.stage == "select" && m.catalog != nil {
-		content = m.processRows(bodyHeight, mainWidth-2)
+	} else if inventory {
+		// Inventory lists and their sheets use their own bounded panes below.
 	} else if m.stage == "select" {
 		content = append(content, "등록된 배치 작업")
 		room := max(1, bodyHeight/2-2)
@@ -666,8 +714,6 @@ func (m model) View() string {
 			j := m.jobs[m.cursor]
 			content = append(content, "──────── 상세 ────────", line(j.Description, mainWidth-2), "스케줄: "+j.Spec, "인자 예시: "+j.Sample)
 		}
-	} else if m.stage == "detail" && m.catalog != nil && m.count() > 0 {
-		content = processDetail(m.visibleProcesses()[m.cursor])
 	} else if m.opts.Command == "roproc" && m.stage == "review" {
 		content = m.registryReview()
 	} else if m.opts.Command == "roproc" && m.stage == "arguments" {
@@ -716,15 +762,39 @@ func (m model) View() string {
 	top := box(line(header, width-2), width, 1, blue)
 	nav := "  " + strings.Join(labels, "  ›  ") + "   [" + m.stage + "]"
 	body := lipgloss.JoinHorizontal(lipgloss.Top, box(strings.Join(rail, "\n\n"), sideWidth, bodyHeight, grey), " ", box(strings.Join(wrapped, "\n"), mainWidth-2, bodyHeight, blue))
+	if inventory {
+		w, h := m.inventorySize()
+		var banner []string
+		if m.err != nil {
+			banner = append(banner, lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(line("오류: "+m.err.Error(), w)))
+		}
+		if m.editing != "" {
+			banner = append(banner, line(m.editing+"> "+m.input+"█", w))
+		}
+		body = strings.Join(append(banner, m.inventoryView(w, h)), "\n")
+		if m.width >= 128 {
+			body = lipgloss.JoinHorizontal(lipgloss.Top, box(strings.Join(rail, "\n\n"), sideWidth, bodyHeight, grey), " ", body)
+		}
+	}
 	help := "q 종료  ↑↓ 이동  Enter 선택/확인  p 패키지  r 갱신  n 목록"
 	if m.opts.Command == "rodis" {
 		help = "q 종료  ↑↓ 이동  / 검색  o 정렬  Enter 상세  s 시작  x 중단  r 재연결"
 	}
 	if m.opts.Command == "ropack" {
-		help = "q 종료  ↑↓ 이동  / 검색  Enter 상세  s 프로세스 상태  r 재연결  n 목록"
+		help = "q 종료  ↑↓ 이동  / 검색  Enter 상세  s 상태표  n 목록"
 	}
 	if m.opts.Command == "roproc" {
-		help = "q 종료  ↑↓ 이동/스크롤  a 등록  x 삭제  Enter 상세/확인  n 목록  r 재조회"
+		help = "q 종료  ↑↓ 이동  Tab 상세  a 등록  x 삭제  Enter 확인"
+	}
+	if m.opts.Command == "rostart" || m.opts.Command == "rostop" {
+		help = "q 종료  ↑↓ 이동  Space 선택  Tab 상세  Enter 확인"
+	}
+	if inventory && m.width >= 100 {
+		if m.opts.Command == "ropack" {
+			help += "  Tab 목록/상세  r 재연결"
+		} else {
+			help += "  / 검색  r 갱신  p 패키지"
+		}
 	}
 	footer := lipgloss.NewStyle().Foreground(color).Render(line("● "+m.status, width)) + "\n" + line(help, width)
 	return top + "\n" + line(nav, width) + "\n" + body + "\n" + footer
