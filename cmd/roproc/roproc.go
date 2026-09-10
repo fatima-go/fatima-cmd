@@ -48,7 +48,7 @@ const (
 	defaultGroupValue = "4"
 )
 
-func main() {
+func legacyMain() {
 	flag.Usage = func() {
 		fmt.Printf(string(usage), os.Args[0])
 	}

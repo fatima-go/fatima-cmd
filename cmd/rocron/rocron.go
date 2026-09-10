@@ -44,7 +44,7 @@ optional arguments:
 
 var listingOption = false
 
-func main() {
+func legacyMain() {
 	flag.Usage = func() {
 		fmt.Printf(usage, os.Args[0])
 	}

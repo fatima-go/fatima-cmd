@@ -40,7 +40,7 @@ optional arguments:
         Host and Package. e.g) localhost:default
 `
 
-func main() {
+func legacyMain() {
 	flag.Usage = func() {
 		fmt.Printf(usage, os.Args[0])
 	}

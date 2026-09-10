@@ -51,7 +51,7 @@ const (
 	yyyyMMddHHmmss = "2006-01-02 15:04:05"
 )
 
-func main() {
+func legacyMain() {
 	flag.Usage = func() {
 		fmt.Printf(usage, os.Args[0])
 	}
