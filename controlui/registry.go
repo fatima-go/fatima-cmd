@@ -37,16 +37,18 @@ func (m model) previewRegistry() tea.Cmd {
 	}
 }
 func (m model) registryReview() []string {
-	out := []string{"작업: " + m.opts.Action + " " + m.opts.Process, "패키지: " + m.client.Target.PackageId}
+	var out []string
 	if m.opts.Action == "remove" {
-		out = append(out, "프로그램·데이터·로그·리비전 영구 삭제")
-	} else {
+		out = append(out, warningStyle.Render("⚠ 되돌릴 수 없음 · 프로그램·데이터·로그·리비전 영구 삭제"), "")
+	}
+	out = append(out, "작업: "+m.opts.Action+" "+m.opts.Process, "패키지: "+m.client.Target.PackageId)
+	if m.opts.Action != "remove" {
 		out = append(out, "프로세스 그룹: "+m.opts.RegistryGroup)
 	}
 	if m.opts.Plan != nil {
 		out = append(out, m.opts.Plan.Effects...)
 	}
-	return append(out, "", "요청 ID: "+m.opts.RequestID, "Enter 실행 요청 / Esc 돌아가기 · ↑↓ 상세 스크롤")
+	return append(out, "", "요청 ID: "+m.opts.RequestID)
 }
 func (m model) registryInput() []string {
 	out := []string{"새 프로세스 등록", "프로세스: " + m.opts.Process, "프로세스 그룹 ID 또는 이름을 입력합니다."}

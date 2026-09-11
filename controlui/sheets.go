@@ -109,7 +109,7 @@ func sheetView(title string, columns []sheetColumn, rows [][]string, cursor, wid
 	return strings.Join(append(out, line(position+"  "+footer, width)), "\n")
 }
 
-func propertySheet(title string, fields [][2]string, width, height, offset int, focused bool) string {
+func propertySheet(title string, fields [][2]string, width, height, offset int, focused, tabbable bool) string {
 	keyWidth := min(12, max(8, (width-7)/3))
 	valueWidth := width - 7 - keyWidth
 	columns := []sheetColumn{{"항목", keyWidth}, {"값", valueWidth}}
@@ -136,9 +136,15 @@ func propertySheet(title string, fields [][2]string, width, height, offset int, 
 	}
 	out := []string{sheetTitle(title, width, focused)}
 	out = append(out, grid(columns, window, -1)...)
-	foot := "Tab 목록 / 상세"
+	foot := ""
+	if tabbable {
+		foot = "Tab 목록 / 상세"
+	}
 	if len(rows) > room {
-		foot = fmt.Sprintf("%d–%d / %d  Tab 상세 · ↑↓ 스크롤", start+1, end, len(rows))
+		foot = fmt.Sprintf("%d–%d / %d", start+1, end, len(rows))
+		if tabbable {
+			foot += "  Tab 상세 · ↑↓ 스크롤"
+		}
 	}
 	return strings.Join(append(out, line(foot, width)), "\n")
 }
@@ -163,7 +169,16 @@ func packageFields(p *api.PackageEntry) [][2]string {
 }
 
 func (m model) inventoryLayout() bool {
+	if m.opts.Command == "rolog" {
+		return m.client != nil && ((m.stage == "package" && m.packages != nil) || ((m.stage == "select" || m.stage == "level") && m.levels != nil))
+	}
 	return m.client != nil && (m.stage == "select" || m.stage == "detail") && (m.catalog != nil || m.packages != nil)
+}
+
+// detailFocusable reports whether Tab may move focus into the detail pane.
+// Process details are a few short rows that simply follow the list cursor.
+func (m model) detailFocusable() bool {
+	return m.opts.Command == "ropack" || m.opts.Command == "rodis"
 }
 
 func (m model) inventorySize() (width, height int) {
@@ -215,6 +230,16 @@ func (m model) detailScrollLimit() int {
 }
 
 func (m model) inventoryView(width, height int) string {
+	if m.opts.Command == "rolog" {
+		return m.logLevelView(width, height)
+	}
+	if m.opts.Command == "roproc" && m.catalog != nil {
+		return m.registryActions(width) + "\n" + m.inventoryPanes(width, height-1)
+	}
+	return m.inventoryPanes(width, height)
+}
+
+func (m model) inventoryPanes(width, height int) string {
 	listWidth, detailWidth := width, width
 	listHeight, detailHeight := m.listHeight(height, width), height
 	split := width >= 92
@@ -253,6 +278,9 @@ func (m model) inventoryView(width, height int) string {
 			}
 			if m.opts.Command == "rostart" || m.opts.Command == "rostop" {
 				selected := "☐ "
+				if m.unselectable(p) != "" {
+					selected = "⊘ "
+				}
 				for _, name := range m.opts.Targets {
 					if name == p.Name {
 						selected = "☑ "
@@ -263,7 +291,11 @@ func (m model) inventoryView(width, height int) string {
 			rows = append(rows, []string{mark + p.Name, p.Group, p.State})
 		}
 		if len(rows) > 0 {
-			fields = processFields(m.visibleProcesses()[min(m.cursor, len(rows)-1)])
+			p := m.visibleProcesses()[min(m.cursor, len(rows)-1)]
+			fields = processFields(p)
+			if reason := m.unselectable(p); reason != "" {
+				fields = append(fields, [2]string{"선택", reason})
+			}
 		}
 		if len(m.opts.Targets) > 0 {
 			footer = fmt.Sprintf("선택 %d개 · Space 선택/해제", len(m.opts.Targets))
@@ -281,7 +313,7 @@ func (m model) inventoryView(width, height int) string {
 		detailTitle, nameHeader = "패키지 상세", "PACKAGE"
 		// Enter opens a full-width sheet for long endpoints and diagnostics.
 		if m.stage == "detail" {
-			return propertySheet(detailTitle, fields, width, height, m.offset, true)
+			return propertySheet(detailTitle, fields, width, height, m.offset, true, m.detailFocusable())
 		}
 	}
 	inner := listWidth - 10 // three columns with cell padding and borders
@@ -289,7 +321,7 @@ func (m model) inventoryView(width, height int) string {
 	stateWidth := min(11, max(7, inner/4))
 	columns := []sheetColumn{{nameHeader, inner - groupWidth - stateWidth}, {"GROUP", groupWidth}, {"STATE", stateWidth}}
 	list := sheetView(title, columns, rows, m.cursor, listWidth, listHeight, m.stage == "select", footer)
-	detail := propertySheet(detailTitle, fields, detailWidth, detailHeight, m.offset, m.stage == "detail")
+	detail := propertySheet(detailTitle, fields, detailWidth, detailHeight, m.offset, m.stage == "detail", m.detailFocusable())
 	if split {
 		return lipgloss.JoinHorizontal(lipgloss.Top, list, " ", detail)
 	}

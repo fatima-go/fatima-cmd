@@ -26,7 +26,7 @@ import (
 	"github.com/fatima-go/fatima-cmd/share"
 )
 
-func main() {
+func legacyMain() {
 	fatimaFlags, err := share.BuildFatimaCmdFlags()
 	if err != nil {
 		fmt.Printf("fail to build argument for execution : %s", err.Error())

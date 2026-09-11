@@ -21,8 +21,8 @@ func TestRegistryArgumentsAndConfirmation(t *testing.T) {
 	}
 	m := model{ctx: context.Background(), opts: Options{Command: "roproc"}, stage: "select", width: 80, height: 24, catalog: &api.ProcessCatalog{Processes: []*api.ProcessEntry{{Name: "sample"}}}}
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd != nil || next.(model).stage != "detail" {
-		t.Fatal("selection mutated registration")
+	if cmd != nil || next.(model).stage != "select" {
+		t.Fatal("Enter left the registry list or mutated registration")
 	}
 	m.stage = "result"
 	m.op = &api.ControlOperation{State: "SUCCEEDED"}

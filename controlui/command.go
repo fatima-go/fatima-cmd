@@ -27,6 +27,8 @@ type Options struct {
 	Group                                                         string
 	All                                                           bool
 	Targets                                                       []string
+	Level                                                         string
+	pickPackage                                                   bool // rolog screen lists packages instead of failing
 }
 
 func Main(command string, legacyMain func()) error {
@@ -47,6 +49,7 @@ func Main(command string, legacyMain func()) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	if !opts.JSON && !opts.Plain && !opts.Listing && term.IsTerminal(int(os.Stdin.Fd())) {
+		opts.pickPackage = opts.Command == "rolog"
 		m := model{opts: opts, ctx: ctx, stage: "select", width: 100, height: 30, status: "접속 확인 중"}
 		final, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
 		if err != nil {
@@ -111,6 +114,11 @@ func parse(command string, args []string) (Options, error) {
 		f.StringVar(&o.Sort, "s", "name", "sort by name or index")
 	} else if command == "ropack" {
 		f.StringVar(&o.Group, "g", "", "package group filter")
+	} else if command == "rolog" {
+		f.Usage = func() {
+			fmt.Fprintln(f.Output(), "usage: rolog [options] [PROCESS LEVEL]\nOmit the arguments to choose a process and level interactively. LEVEL: error, warn, info, debug, trace.")
+			f.PrintDefaults()
+		}
 	} else if command == "roproc" {
 		f.Usage = func() {
 			fmt.Fprintln(f.Output(), "usage: roproc [options] [add PROCESS [GROUP] | remove PROCESS]\nOmit the action to open the interactive registry. Default group: 4.")
@@ -134,6 +142,17 @@ func parse(command string, args []string) (Options, error) {
 		if len(args) == 3 {
 			o.RegistryGroup = args[2]
 		}
+	} else if command == "rolog" && len(f.Args()) > 0 {
+		args := f.Args()
+		if len(args) != 2 {
+			return o, fmt.Errorf("use PROCESS LEVEL to change a log level")
+		}
+		level, ok := normalizeLevel(args[1])
+		if !ok {
+			return o, fmt.Errorf("level must be one of error, warn, info, debug, trace")
+		}
+		// A direct change needs no interactive screen.
+		o.Process, o.Level, o.Plain = args[0], level, true
 	} else if command != "rocron" && len(f.Args()) == 1 {
 		o.Process = f.Args()[0]
 	} else if len(f.Args()) > 0 {
@@ -144,6 +163,9 @@ func parse(command string, args []string) (Options, error) {
 	}
 	if o.TUI && (o.Plain || o.JSON) {
 		return o, fmt.Errorf("--tui conflicts with --plain/--json")
+	}
+	if command == "rolog" && (o.RequestID != "" || o.WatchID != "") {
+		return o, fmt.Errorf("rolog applies levels directly; operation IDs belong to control commands")
 	}
 	if (command == "rodis" || command == "ropack") && (o.RequestID != "" || o.WatchID != "" || o.Process != "") {
 		return o, fmt.Errorf("%s is read-only; operation IDs belong to control commands", command)
@@ -167,6 +189,13 @@ func restoreLegacyArgs(o Options) {
 	if o.Listing {
 		args = append(args, "-l")
 	}
+	if o.Command == "rolog" {
+		if o.Process != "" {
+			args = append(args, o.Process, o.Level)
+		}
+		os.Args = args
+		return
+	}
 	if o.Command == "rodis" && o.Sort != "" {
 		args = append(args, "-s", o.Sort)
 	}
@@ -189,6 +218,9 @@ func restoreLegacyArgs(o Options) {
 	os.Args = args
 }
 func runPlain(ctx context.Context, c *Client, o Options) error {
+	if o.Command == "rolog" {
+		return runLogLevelPlain(ctx, c, o)
+	}
 	if o.Command == "ropack" {
 		q, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()

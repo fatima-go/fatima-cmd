@@ -89,6 +89,12 @@ func Connect(ctx context.Context, cfg config.JupiterContextRecord, name string, 
 		return c, nil
 	}
 	c.Target, err = api.NewRoutingClient(c.gateway).Resolve(auth, &api.PackageQuery{PackageId: opts.Package})
+	if code := status.Code(err); opts.pickPackage && opts.Package == "" && (code == codes.FailedPrecondition || code == codes.NotFound) {
+		// Several packages (or none) match this client; the rolog screen lists them.
+		c.Target = &api.Target{PackageId: "패키지 선택"}
+		c.Capabilities = caps
+		return c, nil
+	}
 	if err != nil {
 		return nil, err
 	}

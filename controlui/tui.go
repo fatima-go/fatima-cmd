@@ -25,6 +25,7 @@ type loaded struct {
 	packages *api.PackageCatalog
 	jobs     []*api.CronEntry
 	catalog  *api.ProcessCatalog
+	levels   *api.LogLevelCatalog
 	err      error
 }
 type operationMsg struct {
@@ -55,6 +56,8 @@ type model struct {
 	busy                          bool
 	op                            *api.ControlOperation
 	stream                        grpc.ServerStreamingClient[api.ControlOperation]
+	levels                        *api.LogLevelCatalog
+	levelCursor                   int
 }
 
 func (m model) Init() tea.Cmd { return m.connect() }
@@ -70,6 +73,14 @@ func (m model) load() tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 		defer cancel()
+		if m.opts.Command == "rolog" {
+			if m.client.backend == nil {
+				c, err := m.client.Packages(ctx)
+				return loaded{packages: c, err: err}
+			}
+			c, err := m.client.LogLevels(ctx)
+			return loaded{levels: c, err: err}
+		}
 		if m.opts.Command == "roproc" {
 			c, err := m.client.Registry(ctx)
 			return loaded{registry: c, err: err}
@@ -146,9 +157,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.catalog = v.registry.Catalog
 		}
 		m.packages = v.packages
+		m.levels = v.levels
 		m.cursor = 0
 		m.offset = 0
 		m.status = "작업 선택"
+		if m.opts.Command == "rolog" {
+			return m.loadedLogLevels(), nil
+		}
 		if m.opts.Command == "roproc" {
 			if m.opts.Action != "" {
 				if m.opts.RequestID == "" {
@@ -188,6 +203,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.stream = v.stream
 		return m, receive(v.stream)
+	case logLevelApplied:
+		return m.appliedLogLevel(v)
 	case registryPreview:
 		m.busy = false
 		m.err = v.err
@@ -201,6 +218,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.stage = "review"
 		m.offset = 0
 		m.status = "변경 범위 확인 · Enter 실행 요청"
+		if m.opts.Action == "remove" {
+			m.editing, m.input = "confirm", ""
+			m.status = "변경 범위 확인 · 프로세스 이름 입력 후 Enter"
+		}
 		return m, nil
 	case packageStream:
 		if v.epoch != m.liveEpoch {
@@ -319,6 +340,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.editing != "" {
 			switch key {
 			case "enter":
+				if m.editing == "confirm" {
+					if strings.TrimSpace(m.input) != m.opts.Process {
+						m.status = "프로세스 이름이 일치하지 않습니다 · " + m.opts.Process
+						return m, nil
+					}
+					m.editing = ""
+					m.stage = "result"
+					m.busy = true
+					m.status = "실행 요청 전달 중"
+					return m, m.submit()
+				}
 				if m.editing == "process" {
 					m.opts.Process = strings.TrimSpace(m.input)
 					m.editing = "group"
@@ -360,7 +392,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.opts.RequestID = transport.ID("c_")
 				m.status = "내용 확인 / Enter 실행 요청"
 			case "esc":
-				if m.opts.Command == "roproc" && (m.editing == "process" || m.editing == "group") {
+				if m.opts.Command == "roproc" && (m.editing == "process" || m.editing == "group" || m.editing == "confirm") {
 					m.opts.Action = ""
 					m.opts.Process = ""
 					m.opts.Plan = nil
@@ -368,6 +400,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.editing = ""
 				m.stage = "select"
+			case "up", "down":
+				if m.editing == "confirm" { // keep the effects scrollable while typing
+					m.offset = max(0, m.offset+map[string]int{"up": -1, "down": 1}[key])
+				}
 			case "backspace":
 				r := []rune(m.input)
 				if len(r) > 0 {
@@ -421,9 +457,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.opts.Command == "rolog" {
+			return m.updateLogLevel(key)
+		}
 		switch key {
 		case "tab":
-			if m.inventoryLayout() {
+			if m.inventoryLayout() && m.detailFocusable() {
 				if m.stage == "select" {
 					m.stage = "detail"
 				} else {
@@ -487,6 +526,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "s", "x":
 			if m.opts.Command == "roproc" && key == "x" && m.err == nil && m.count() > 0 && (m.stage == "select" || m.stage == "detail") {
+				if p := m.visibleProcesses()[m.cursor]; p.Opm {
+					m.status = p.Name + ": OPM 프로세스는 삭제할 수 없습니다"
+					return m, nil
+				}
 				m.opts.Action = "remove"
 				m.opts.Process = m.visibleProcesses()[m.cursor].Name
 				m.opts.RegistryGroup = ""
@@ -570,7 +613,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.err != nil {
 				return m, nil
 			}
-			if m.opts.Command == "rodis" || m.opts.Command == "ropack" || (m.opts.Command == "roproc" && (m.stage == "select" || m.stage == "detail")) {
+			if m.opts.Command == "roproc" && (m.stage == "select" || m.stage == "detail") {
+				return m, nil // the detail pane follows the cursor; a and x act on the row
+			}
+			if m.opts.Command == "rodis" || m.opts.Command == "ropack" {
 				if m.count() > 0 {
 					m.stage = "detail"
 					m.offset = 0
@@ -579,7 +625,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if (m.stage == "select" || m.stage == "detail") && m.catalog != nil && m.count() > 0 {
 				if len(m.opts.Targets) == 0 {
-					m.opts.Targets = []string{m.visibleProcesses()[m.cursor].Name}
+					p := m.visibleProcesses()[m.cursor]
+					if reason := m.unselectable(p); reason != "" {
+						m.status = p.Name + ": " + reason
+						return m, nil
+					}
+					m.opts.Targets = []string{p.Name}
 				}
 				m.stage = "review"
 				if m.opts.RequestID == "" {
@@ -610,6 +661,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 				if found < 0 {
+					if reason := m.unselectable(m.visibleProcesses()[m.cursor]); reason != "" {
+						m.status = name + ": " + reason
+						return m, nil
+					}
 					m.opts.Targets = append(m.opts.Targets, name)
 				} else {
 					m.opts.Targets = append(m.opts.Targets[:found], m.opts.Targets[found+1:]...)
@@ -674,7 +729,11 @@ func (m model) View() string {
 	}
 	if m.opts.Command == "roproc" {
 		stages = []string{"select", "arguments", "review", "result"}
-		labels = []string{"등록부 / 상세", "등록 입력", "변경 확인", "진행 / 결과"}
+		labels = []string{"등록부", "등록 입력", "변경 확인", "진행 / 결과"}
+	}
+	if m.opts.Command == "rolog" {
+		stages = []string{"package", "select", "level"}
+		labels = []string{"패키지 선택", "프로세스 선택", "로그레벨 변경"}
 	}
 	var rail []string
 	for i, s := range stages {
@@ -693,6 +752,8 @@ func (m model) View() string {
 		}
 	} else if inventory {
 		// Inventory lists and their sheets use their own bounded panes below.
+	} else if m.opts.Command == "rolog" {
+		content = append(content, "로그레벨 목록을 불러오고 있습니다. r 갱신")
 	} else if m.stage == "select" {
 		content = append(content, "등록된 배치 작업")
 		room := max(1, bodyHeight/2-2)
@@ -726,7 +787,7 @@ func (m model) View() string {
 			content = append(content, m.opts.Targets...)
 		}
 		if m.stage == "review" {
-			content = append(content, "", "요청 ID: "+m.opts.RequestID, "Enter: 위 대상으로 실행 요청 / Esc: 돌아가기")
+			content = append(content, "", "요청 ID: "+m.opts.RequestID)
 		}
 	} else {
 		content = append(content, "요청 ID: "+m.opts.RequestID)
@@ -752,16 +813,28 @@ func (m model) View() string {
 	if m.err != nil && m.client != nil {
 		content = append([]string{"오류: " + clean(m.err.Error()), ""}, content...)
 	}
-	if m.editing != "" {
+	if m.editing != "" && m.editing != "confirm" { // the decision bar shows the confirmation input
 		content = append([]string{m.editing + "> " + m.input + "█", ""}, content...)
 	}
+	bar := m.decisionBar(mainWidth - 2)
+	room := max(1, bodyHeight-len(bar))
 	wrapped := strings.Split(lipgloss.NewStyle().Width(mainWidth-2).Render(strings.Join(content, "\n")), "\n")
-	maxOffset := max(0, len(wrapped)-bodyHeight)
+	maxOffset := max(0, len(wrapped)-room)
 	start := min(m.offset, maxOffset)
-	wrapped = wrapped[start:min(len(wrapped), start+bodyHeight)]
+	wrapped = wrapped[start:min(len(wrapped), start+room)]
+	mainBorder := blue
+	if len(bar) > 0 {
+		for len(wrapped) < room {
+			wrapped = append(wrapped, "")
+		}
+		wrapped = append(wrapped, bar...)
+		if m.destructive() {
+			mainBorder = lipgloss.Color("196")
+		}
+	}
 	top := box(line(header, width-2), width, 1, blue)
 	nav := "  " + strings.Join(labels, "  ›  ") + "   [" + m.stage + "]"
-	body := lipgloss.JoinHorizontal(lipgloss.Top, box(strings.Join(rail, "\n\n"), sideWidth, bodyHeight, grey), " ", box(strings.Join(wrapped, "\n"), mainWidth-2, bodyHeight, blue))
+	body := lipgloss.JoinHorizontal(lipgloss.Top, box(strings.Join(rail, "\n\n"), sideWidth, bodyHeight, grey), " ", box(strings.Join(wrapped, "\n"), mainWidth-2, bodyHeight, mainBorder))
 	if inventory {
 		w, h := m.inventorySize()
 		var banner []string
@@ -784,12 +857,28 @@ func (m model) View() string {
 		help = "q 종료  ↑↓ 이동  / 검색  Enter 상세  s 상태표  n 목록"
 	}
 	if m.opts.Command == "roproc" {
-		help = "q 종료  ↑↓ 이동  Tab 상세  a 등록  x 삭제  Enter 확인"
+		help = "q 종료  ↑↓ 이동" // a and x sit above the list
 	}
 	if m.opts.Command == "rostart" || m.opts.Command == "rostop" {
-		help = "q 종료  ↑↓ 이동  Space 선택  Tab 상세  Enter 확인"
+		help = "q 종료  ↑↓ 이동  Space 선택  Enter 확인"
 	}
-	if inventory && m.width >= 100 {
+	if m.opts.Command == "rolog" {
+		switch m.stage {
+		case "package":
+			help = "q 종료  ↑↓ 이동  Enter 선택  / 검색"
+		case "level":
+			help = "q 종료  ↑↓ 레벨 선택  Enter 적용  Esc 취소"
+		default:
+			help = "q 종료  ↑↓ 이동  Enter 로그레벨 변경  / 검색  p 패키지  r 갱신"
+		}
+	}
+	if m.stage == "review" && m.opts.Command != "rolog" {
+		help = "q 종료  Enter 실행  Esc 취소  ↑↓ 스크롤"
+		if m.editing == "confirm" {
+			help = "프로세스 이름 입력 후 Enter  Esc 취소  ↑↓ 스크롤"
+		}
+	}
+	if inventory && m.width >= 100 && m.opts.Command != "rolog" {
 		if m.opts.Command == "ropack" {
 			help += "  Tab 목록/상세  r 재연결"
 		} else {

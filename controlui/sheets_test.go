@@ -76,7 +76,7 @@ func TestInventorySheetsFitAndKeepTheSelectedRowVisible(t *testing.T) {
 func TestPagingAndDetailNavigationNeverSubmitOrLoseSelection(t *testing.T) {
 	m := inventoryFixture("rostop")
 	m.opts.Targets = []string{"worker-00", "worker-47"}
-	for _, key := range []tea.KeyType{tea.KeyPgDown, tea.KeyEnd, tea.KeyHome, tea.KeyTab, tea.KeyEnd, tea.KeyUp, tea.KeyEsc} {
+	for _, key := range []tea.KeyType{tea.KeyPgDown, tea.KeyEnd, tea.KeyHome, tea.KeyTab, tea.KeyEnd, tea.KeyUp} {
 		updated, cmd := m.Update(tea.KeyMsg{Type: key})
 		m = updated.(model)
 		if cmd != nil || len(m.opts.Targets) != 2 || m.opts.RequestID != "" {

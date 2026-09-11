@@ -34,9 +34,31 @@ func selectProcesses(c *api.ProcessCatalog, o Options) ([]string, error) {
 	}
 	return names, nil
 }
+
+// unselectable explains why rostart or rostop would do nothing for p, or be
+// refused by Juno; such rows cannot be selected.
+func (m model) unselectable(p *api.ProcessEntry) string {
+	switch m.opts.Command {
+	case "rostart":
+		if p.State == "ALIVE" {
+			return "이미 실행 중입니다"
+		}
+	case "rostop":
+		if strings.EqualFold(p.Name, "jupiter") || strings.EqualFold(p.Name, "juno") {
+			return "원격으로 중지할 수 없습니다"
+		}
+		if p.State == "DEAD" {
+			return "이미 중지되어 있습니다"
+		}
+	}
+	return ""
+}
 func (m model) count() int {
 	if m.packages != nil {
 		return len(m.visiblePackages())
+	}
+	if m.levels != nil {
+		return len(m.visibleLogLevels())
 	}
 	if m.catalog != nil {
 		return len(m.visibleProcesses())
