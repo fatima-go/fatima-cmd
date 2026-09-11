@@ -63,6 +63,7 @@ func TestRegistrationUsesPCTimezoneAndNeverTTLOrBuildTime(t *testing.T) {
 	time.Local = time.FixedZone("test-local", 5*60*60+30*60)
 	t.Cleanup(func() { time.Local = previous })
 	m := layoutModel()
+	m.view = "artifacts" // the start screen is Upload; registration time lives on the artifact list
 	m.artifacts[0].UploadedAt = time.Date(2026, 9, 8, 12, 22, 19, 0, time.UTC).Unix()
 	for _, width := range []int{60, 80, 132} {
 		m.width, m.height = width, 24

@@ -104,6 +104,10 @@ func activePackage(p *api.Rollout) int {
 	return 0
 }
 
+// skipUploadBadge marks the key that deploys an already uploaded artifact
+// instead of uploading a new FAR.
+var skipUploadBadge = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("231")).Background(lipgloss.Color("28"))
+
 func (m *model) stage() int {
 	switch m.view {
 	case "connection":
@@ -440,6 +444,8 @@ func (m *model) screen(width int) screenContent {
 		c.listTitle, c.detailTitle = "LOCAL FAR / 최근 수정 순", "SELECTED FAR / BUILD"
 		if m.view == "legacy" {
 			c.title = "Legacy deployment"
+		} else {
+			c.title += "   " + skipUploadBadge.Render(" a ") + " 업로드 없이 기존 배포본 선택"
 		}
 		if m.busy && m.bytes > 0 {
 			c.detailTitle = "TRANSFER / SERVER RESPONSE"
@@ -578,6 +584,16 @@ func (m *model) confirmationLines() []string {
 			}
 			lines = append(lines, field("Request ID", m.draft.RequestId))
 		}
+	case "legacy-group":
+		lines = []string{alertStyle.Render("이 그룹은 신규(v2) 방식으로 배포할 수 없습니다"), "", field("그룹", m.legacyGroup), "legacy Juno 패키지:"}
+		for _, id := range m.legacyTargets {
+			lines = append(lines, "  - "+clean(id))
+		}
+		return append(lines, "",
+			"배포 계획은 그룹 전체를 포함하므로, legacy 패키지가 하나라도 있으면 그룹 전체를 기존 HTTP 방식으로 배포합니다.",
+			"legacy 방식은 FAR 경로를 다시 선택하며 단계별 진행과 나머지 순차 승인이 없습니다.",
+			"신규 방식으로 배포하려면 위 패키지의 Juno를 v2로 업데이트한 뒤 다시 시도하세요.",
+			"", alertStyle.Render("Enter legacy 방식으로 진행 / Esc 취소하고 대상 선택으로"))
 	case "legacy":
 		lines = []string{"기존 HTTP 배포를 실행합니다.", field("FAR", m.input), field("그룹", m.opts.Group), field("패키지", m.opts.First), "서버 응답에는 Juno의 상세 설치·기동 상태가 포함되지 않습니다."}
 	case "continue":
@@ -642,8 +658,9 @@ func (m *model) footer(width int) []string {
 	case m.confirm != "":
 		keys, global = "Enter 확인 후 실행  Esc 취소", "PgUp/PgDn 스크롤  q 종료"
 	case m.view == "upload" || m.view == "legacy":
-		keys = "↑↓ FAR 선택  p 직접 경로  Enter 업로드  r 목록 갱신"
+		keys = "↑↓ FAR 선택  Enter 업로드  a 기존 배포본  p 직접 경로  r 목록 갱신"
 		if m.view == "legacy" {
+			keys = "↑↓ FAR 선택  p 직접 경로  Enter 업로드  r 목록 갱신"
 			global = "Tab 영역  PgUp/PgDn 스크롤  q 종료 · HTTP legacy"
 		}
 	case m.view == "watch":

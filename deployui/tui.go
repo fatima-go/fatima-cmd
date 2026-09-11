@@ -63,6 +63,8 @@ type model struct {
 	preview                       *farPreview
 	previewPending                bool
 	lastError                     string
+	legacyGroup                   string
+	legacyTargets                 []string
 }
 
 var titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("222"))
@@ -77,14 +79,11 @@ func Run(cfg config.JupiterContextRecord, o Options) error {
 }
 
 func newModel(ctx context.Context, read contextReader, o Options) *model {
-	view := "artifacts"
+	// A new FAR is the usual start; a switches to already uploaded artifacts.
+	view := "upload"
 	switch o.Command {
-	case "upload":
-		view = "upload"
-	case "rollouts":
-		view = "rollouts"
-	case "watch":
-		view = "watch"
+	case "artifacts", "rollouts", "watch":
+		view = o.Command
 	}
 	return &model{ctx: ctx, opts: o, readContext: read, events: make(chan event, 64), width: 100, height: 32, view: view, initialView: view, input: o.Value, diagnostics: o.Debug}
 }
@@ -488,6 +487,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					q := m.draft
 					return m, m.task("create", func(ctx context.Context) (any, error) { return m.client.Create(ctx, q) })
 				}
+				if m.confirm == "legacy-group" {
+					m.confirm = ""
+					m.view = "legacy"
+					m.input = m.opts.Value
+					m.opts.Group = m.legacyGroup
+					m.opts.First = ""
+					m.notice = "Legacy mode selected before deployment. Enter the original FAR path; detailed stages and remaining rollout are unavailable."
+					return m, m.localScan()
+				}
 				if m.confirm == "legacy" {
 					m.confirm = ""
 					m.startLegacy()
@@ -647,8 +655,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				first := m.targets[m.cursor]
-				ids := []string{}
-				compatible := true
+				ids, legacyIDs := []string{}, []string{}
 				for _, t := range m.targets {
 					if t.Group == first.Group {
 						ids = append(ids, t.PackageId)
@@ -657,17 +664,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 								m.notice = "Capability check failed; no deployment submitted: " + t.PackageId + ": " + t.Reason
 								return m, nil
 							}
-							compatible = false
+							legacyIDs = append(legacyIDs, t.PackageId)
 						}
 					}
 				}
-				if !compatible {
-					m.view = "legacy"
-					m.input = m.opts.Value
-					m.opts.Group = first.Group
-					m.opts.First = ""
-					m.notice = "This group includes an unsupported Juno. Legacy mode selected before deployment. Enter the original FAR path; detailed stages and remaining rollout are unavailable."
-					return m, m.localScan()
+				if len(legacyIDs) > 0 {
+					// Name the packages that force the whole group onto legacy HTTP
+					// before switching, so the operator can cancel instead.
+					m.legacyGroup, m.legacyTargets = first.Group, legacyIDs
+					m.confirm, m.scroll = "legacy-group", 0
+					m.notice = "The group includes a legacy Juno; confirm before switching to legacy HTTP."
+					return m, nil
 				}
 				m.draft = &api.CreateRollout{RequestId: transport.ID("cli_"), ArtifactId: m.artifact.Id, Group: first.Group, PackageIds: ids, FirstPackageId: first.PackageId}
 				m.confirm = "create"

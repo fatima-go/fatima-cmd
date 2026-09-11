@@ -22,8 +22,17 @@ func TestUnreachableJunoNeverFallsBack(t *testing.T) {
 	}
 	m.targets[0].Legacy = true
 	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd != nil || m.view != "targets" || m.draft != nil || m.confirm != "legacy-group" {
+		t.Fatal("legacy detection switched modes without asking")
+	}
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd != nil || m.view != "targets" || m.confirm != "" {
+		t.Fatal("Esc did not return to target selection")
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil || m.view != "legacy" || m.draft != nil || m.confirm != "" {
-		t.Fatal("explicit legacy detection not routed before submission")
+		t.Fatal("confirmed legacy detection not routed before submission")
 	}
 	// Opening the local picker is read-only; legacy deployment still needs
 	// file selection and an explicit confirmation.
