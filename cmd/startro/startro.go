@@ -101,8 +101,9 @@ func getWorkingDir(procName string) string {
 
 func execProgram(workingDir string, path string) (int, error) {
 	var cmd *exec.Cmd
-	//cmd = exec.Command(filepath.Base(path))
-	cmd = exec.Command("bash", "-c", filepath.Base(path))
+	// Run the program installed in the working directory; a bare name would
+	// be resolved through PATH and could start a stale copy elsewhere.
+	cmd = exec.Command("bash", "-c", "./"+filepath.Base(path))
 	cmd.Dir = workingDir
 
 	stderr, err := cmd.StderrPipe()
