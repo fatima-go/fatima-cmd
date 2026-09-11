@@ -26,6 +26,7 @@ type loaded struct {
 	jobs     []*api.CronEntry
 	catalog  *api.ProcessCatalog
 	levels   *api.LogLevelCatalog
+	history  *api.HistoryList
 	err      error
 }
 type operationMsg struct {
@@ -58,6 +59,8 @@ type model struct {
 	stream                        grpc.ServerStreamingClient[api.ControlOperation]
 	levels                        *api.LogLevelCatalog
 	levelCursor                   int
+	history                       *api.HistoryList
+	histCursor                    int
 }
 
 func (m model) Init() tea.Cmd { return m.connect() }
@@ -73,6 +76,14 @@ func (m model) load() tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 		defer cancel()
+		if m.opts.Command == "rohis" {
+			if m.client.backend == nil {
+				c, err := m.client.Packages(ctx)
+				return loaded{packages: c, err: err}
+			}
+			c, err := m.client.History(ctx, "")
+			return loaded{history: c, err: err}
+		}
 		if m.opts.Command == "rolog" {
 			if m.client.backend == nil {
 				c, err := m.client.Packages(ctx)
@@ -158,11 +169,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.packages = v.packages
 		m.levels = v.levels
+		m.history = v.history
 		m.cursor = 0
 		m.offset = 0
 		m.status = "작업 선택"
 		if m.opts.Command == "rolog" {
 			return m.loadedLogLevels(), nil
+		}
+		if m.opts.Command == "rohis" {
+			return m.loadedHistory(), nil
 		}
 		if m.opts.Command == "roproc" {
 			if m.opts.Action != "" {
@@ -460,6 +475,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.opts.Command == "rolog" {
 			return m.updateLogLevel(key)
 		}
+		if m.opts.Command == "rohis" {
+			return m.updateHistory(key)
+		}
 		switch key {
 		case "tab":
 			if m.inventoryLayout() && m.detailFocusable() {
@@ -731,6 +749,10 @@ func (m model) View() string {
 		stages = []string{"select", "arguments", "review", "result"}
 		labels = []string{"등록부", "등록 입력", "변경 확인", "진행 / 결과"}
 	}
+	if m.opts.Command == "rohis" {
+		stages = []string{"package", "select", "records"}
+		labels = []string{"패키지 선택", "프로세스 선택", "배포 이력"}
+	}
 	if m.opts.Command == "rolog" {
 		stages = []string{"package", "select", "level"}
 		labels = []string{"패키지 선택", "프로세스 선택", "로그레벨 변경"}
@@ -752,6 +774,8 @@ func (m model) View() string {
 		}
 	} else if inventory {
 		// Inventory lists and their sheets use their own bounded panes below.
+	} else if m.opts.Command == "rohis" {
+		content = append(content, "배포 이력을 불러오고 있습니다. r 갱신")
 	} else if m.opts.Command == "rolog" {
 		content = append(content, "로그레벨 목록을 불러오고 있습니다. r 갱신")
 	} else if m.stage == "select" {
@@ -862,6 +886,16 @@ func (m model) View() string {
 	if m.opts.Command == "rostart" || m.opts.Command == "rostop" {
 		help = "q 종료  ↑↓ 이동  Space 선택  Enter 확인"
 	}
+	if m.opts.Command == "rohis" {
+		switch m.stage {
+		case "package":
+			help = "q 종료  ↑↓ 이동  Enter 선택  / 검색"
+		case "records":
+			help = "q 종료  ↑↓ 이력 이동  Esc 목록"
+		default:
+			help = "q 종료  ↑↓ 이동  Enter 이력 보기  / 검색  p 패키지  r 갱신"
+		}
+	}
 	if m.opts.Command == "rolog" {
 		switch m.stage {
 		case "package":
@@ -878,7 +912,7 @@ func (m model) View() string {
 			help = "프로세스 이름 입력 후 Enter  Esc 취소  ↑↓ 스크롤"
 		}
 	}
-	if inventory && m.width >= 100 && m.opts.Command != "rolog" {
+	if inventory && m.width >= 100 && m.opts.Command != "rolog" && m.opts.Command != "rohis" {
 		if m.opts.Command == "ropack" {
 			help += "  Tab 목록/상세  r 재연결"
 		} else {

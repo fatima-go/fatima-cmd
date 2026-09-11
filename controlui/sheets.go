@@ -172,6 +172,9 @@ func (m model) inventoryLayout() bool {
 	if m.opts.Command == "rolog" {
 		return m.client != nil && ((m.stage == "package" && m.packages != nil) || ((m.stage == "select" || m.stage == "level") && m.levels != nil))
 	}
+	if m.opts.Command == "rohis" {
+		return m.client != nil && ((m.stage == "package" && m.packages != nil) || ((m.stage == "select" || m.stage == "records") && m.history != nil))
+	}
 	return m.client != nil && (m.stage == "select" || m.stage == "detail") && (m.catalog != nil || m.packages != nil)
 }
 
@@ -232,6 +235,9 @@ func (m model) detailScrollLimit() int {
 func (m model) inventoryView(width, height int) string {
 	if m.opts.Command == "rolog" {
 		return m.logLevelView(width, height)
+	}
+	if m.opts.Command == "rohis" {
+		return m.historyView(width, height)
 	}
 	if m.opts.Command == "roproc" && m.catalog != nil {
 		return m.registryActions(width) + "\n" + m.inventoryPanes(width, height-1)

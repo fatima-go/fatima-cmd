@@ -167,27 +167,7 @@ func (m model) moveCursor(key string) model {
 func (m model) updateLogLevel(key string) (tea.Model, tea.Cmd) {
 	switch m.stage {
 	case "package":
-		switch key {
-		case "/":
-			m.editing, m.input = "filter", m.filter
-		case "esc":
-			if m.client.backend != nil {
-				m.filter, m.busy = "", true
-				return m, m.load()
-			}
-		case "enter":
-			rows := m.visiblePackages()
-			if len(rows) == 0 {
-				return m, nil
-			}
-			m.opts.Package = rows[min(m.cursor, len(rows)-1)].Target.PackageId
-			m.client.Close()
-			m.client, m.packages, m.filter, m.cursor, m.err = nil, nil, "", 0, nil
-			m.status = "접속 확인 중"
-			return m, m.connect()
-		default:
-			return m.moveCursor(key), nil
-		}
+		return m.choosePackage(key)
 	case "level":
 		switch key {
 		case "up", "k":
@@ -231,6 +211,48 @@ func (m model) updateLogLevel(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// choosePackage handles the package list shown when routing could not pick one
+// (or after p). Enter reconnects to the chosen package.
+func (m model) choosePackage(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "/":
+		m.editing, m.input = "filter", m.filter
+	case "esc":
+		if m.client.backend != nil {
+			m.filter, m.busy = "", true
+			return m, m.load()
+		}
+	case "enter":
+		rows := m.visiblePackages()
+		if len(rows) == 0 {
+			return m, nil
+		}
+		m.opts.Package = rows[min(m.cursor, len(rows)-1)].Target.PackageId
+		m.client.Close()
+		m.client, m.packages, m.filter, m.cursor, m.err = nil, nil, "", 0, nil
+		m.status = "접속 확인 중"
+		return m, m.connect()
+	default:
+		return m.moveCursor(key), nil
+	}
+	return m, nil
+}
+func (m model) packagePickerView(width, height int) string {
+	title := "패키지 선택"
+	if m.filter != "" {
+		title += " · " + m.filter
+	}
+	var rows [][]string
+	for i, p := range m.visiblePackages() {
+		mark := "  "
+		if i == m.cursor {
+			mark = "▶ "
+		}
+		rows = append(rows, []string{mark + p.Target.PackageId, p.Target.Group, p.State})
+	}
+	return sheetView(title, threeColumns("PACKAGE", "STATE", width), rows, m.cursor, width, height, true, "Enter 선택")
+}
+
 func threeColumns(name, last string, width int) []sheetColumn {
 	inner := width - 10 // three columns with cell padding and borders
 	groupWidth := min(14, max(7, inner/4))
@@ -243,15 +265,7 @@ func (m model) logLevelView(width, height int) string {
 		suffix = " · " + m.filter
 	}
 	if m.stage == "package" {
-		var rows [][]string
-		for i, p := range m.visiblePackages() {
-			mark := "  "
-			if i == m.cursor {
-				mark = "▶ "
-			}
-			rows = append(rows, []string{mark + p.Target.PackageId, p.Target.Group, p.State})
-		}
-		return sheetView("패키지 선택"+suffix, threeColumns("PACKAGE", "STATE", width), rows, m.cursor, width, height, true, "Enter 선택")
+		return m.packagePickerView(width, height)
 	}
 	entries := m.visibleLogLevels()
 	var rows [][]string

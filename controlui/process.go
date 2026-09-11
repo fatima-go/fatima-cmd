@@ -60,6 +60,9 @@ func (m model) count() int {
 	if m.levels != nil {
 		return len(m.visibleLogLevels())
 	}
+	if m.history != nil {
+		return len(m.historyProcesses())
+	}
 	if m.catalog != nil {
 		return len(m.visibleProcesses())
 	}

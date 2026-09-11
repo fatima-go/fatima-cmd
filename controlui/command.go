@@ -49,7 +49,7 @@ func Main(command string, legacyMain func()) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	if !opts.JSON && !opts.Plain && !opts.Listing && term.IsTerminal(int(os.Stdin.Fd())) {
-		opts.pickPackage = opts.Command == "rolog"
+		opts.pickPackage = opts.Command == "rolog" || opts.Command == "rohis"
 		m := model{opts: opts, ctx: ctx, stage: "select", width: 100, height: 30, status: "접속 확인 중"}
 		final, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
 		if err != nil {
@@ -164,8 +164,11 @@ func parse(command string, args []string) (Options, error) {
 	if o.TUI && (o.Plain || o.JSON) {
 		return o, fmt.Errorf("--tui conflicts with --plain/--json")
 	}
-	if command == "rolog" && (o.RequestID != "" || o.WatchID != "") {
-		return o, fmt.Errorf("rolog applies levels directly; operation IDs belong to control commands")
+	if (command == "rolog" || command == "rohis") && (o.RequestID != "" || o.WatchID != "") {
+		return o, fmt.Errorf("%s does not use operation IDs; they belong to control commands", command)
+	}
+	if command == "rohis" && (o.Process != "" || o.Group != "" || o.All) {
+		o.Plain = true // an explicit selection prints the report like the original command
 	}
 	if (command == "rodis" || command == "ropack") && (o.RequestID != "" || o.WatchID != "" || o.Process != "") {
 		return o, fmt.Errorf("%s is read-only; operation IDs belong to control commands", command)
@@ -220,6 +223,9 @@ func restoreLegacyArgs(o Options) {
 func runPlain(ctx context.Context, c *Client, o Options) error {
 	if o.Command == "rolog" {
 		return runLogLevelPlain(ctx, c, o)
+	}
+	if o.Command == "rohis" {
+		return runHistoryPlain(ctx, c, o)
 	}
 	if o.Command == "ropack" {
 		q, cancel := context.WithTimeout(ctx, 10*time.Second)

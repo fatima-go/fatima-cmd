@@ -250,6 +250,9 @@ func DeploymentHistoryJunoProc(flags share.FatimaCmdFlags, group string, all boo
 			}
 		}
 
+		if process := share.GetKeyInMap(m, "process"); process != "" {
+			fmt.Printf("\n + process : %s", process)
+		}
 		fmt.Printf("\n + build user : %s", share.GetKeyInMap(m, "build.user"))
 		fmt.Printf("\n + build time : %s", share.GetKeyInMap(m, "build.time"))
 		fmt.Printf("\n + git branch : %s", share.GetKeyInMap(m, "build.git.branch"))

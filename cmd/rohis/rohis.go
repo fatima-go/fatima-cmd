@@ -44,7 +44,7 @@ optional arguments:
 var optionGroup string
 var optionAll bool
 
-func main() {
+func legacyMain() {
 	flag.Usage = func() {
 		fmt.Printf(string(usage), os.Args[0])
 	}
