@@ -26,6 +26,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 )
 
 func ExecuteShell(wd, command string) error {
@@ -74,25 +75,42 @@ func GetFilesInDir(path string) []string {
 	return targetList
 }
 
+// CopyFile replaces dst with a new file rather than rewriting it in place. An
+// in-place rewrite keeps the old file's extended attributes, and a stale macOS
+// quarantine flag then stops the updated binary from starting.
 func CopyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
 		return fmt.Errorf("open %s error : %s", src, err.Error())
 	}
 	defer in.Close()
-	out, err := os.Create(dst)
+	info, err := in.Stat()
+	if err != nil {
+		return fmt.Errorf("stat %s error : %s", src, err.Error())
+	}
+	out, err := os.CreateTemp(filepath.Dir(dst), "."+filepath.Base(dst)+".*")
 	if err != nil {
 		return fmt.Errorf("create %s error : %s", dst, err.Error())
 	}
-	defer out.Close()
+	tmp := out.Name()
+	defer os.Remove(tmp) // no-op once renamed into place
 
 	if _, err = io.Copy(out, in); err != nil {
+		out.Close()
 		return fmt.Errorf("copy error : %s", err.Error())
 	}
-	err = out.Sync()
-	if err != nil {
+	if err = out.Sync(); err != nil {
+		out.Close()
 		return fmt.Errorf("sync error : %s", err.Error())
 	}
-
+	if err = out.Close(); err != nil {
+		return fmt.Errorf("close %s error : %s", tmp, err.Error())
+	}
+	if err = os.Chmod(tmp, info.Mode().Perm()); err != nil {
+		return fmt.Errorf("chmod %s error : %s", tmp, err.Error())
+	}
+	if err = os.Rename(tmp, dst); err != nil {
+		return fmt.Errorf("replace %s error : %s", dst, err.Error())
+	}
 	return nil
 }
