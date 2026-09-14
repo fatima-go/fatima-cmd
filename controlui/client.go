@@ -69,7 +69,7 @@ func Connect(ctx context.Context, cfg config.JupiterContextRecord, name string, 
 		return nil, fmt.Errorf("Jupiter APIs are unavailable")
 	}
 	feature := "routing"
-	if opts.Command == "ropack" || opts.Command == "roproc" {
+	if opts.Command == "ropack" {
 		feature = opts.Command
 	}
 	if !transport.Supports(caps, feature) {
@@ -98,17 +98,6 @@ func Connect(ctx context.Context, cfg config.JupiterContextRecord, name string, 
 	if err != nil {
 		return nil, err
 	}
-	if opts.Command == "roproc" {
-		_, err = c.Registry(ctx)
-		if status.Code(err) == codes.Unimplemented {
-			return nil, transport.ErrLegacy
-		}
-		if err != nil {
-			return nil, err
-		}
-		c.Capabilities = caps
-		return c, nil
-	}
 	caps, err = transport.Discover(ctx, c.Target.Endpoint)
 	if err != nil {
 		return nil, err
@@ -126,6 +115,15 @@ func Connect(ctx context.Context, cfg config.JupiterContextRecord, name string, 
 	c.Capabilities = caps
 	if err != nil {
 		return nil, err
+	}
+	if opts.Command == "roproc" {
+		_, err = c.Registry(ctx)
+		if status.Code(err) == codes.Unimplemented {
+			return nil, transport.ErrLegacy
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
 	return c, nil
 }
@@ -177,7 +175,7 @@ func (c *Client) Get(ctx context.Context, command, id string) (*api.ControlOpera
 		return nil, err
 	}
 	if command == "roproc" {
-		return api.NewProcessRegistryClient(c.gateway).Get(ctx, &api.RegistryOperationQuery{PackageId: c.Target.PackageId, Id: id})
+		return api.NewProcessRegistryClient(c.backend).Get(ctx, &api.RegistryOperationQuery{PackageId: c.Target.PackageId, Id: id})
 	}
 	if command != "rocron" {
 		return api.NewProcessControlClient(c.backend).Get(ctx, &api.OperationQuery{Id: id})
@@ -190,7 +188,7 @@ func (c *Client) Watch(ctx context.Context, command, id string) (grpc.ServerStre
 		return nil, err
 	}
 	if command == "roproc" {
-		return api.NewProcessRegistryClient(c.gateway).Watch(ctx, &api.RegistryOperationQuery{PackageId: c.Target.PackageId, Id: id})
+		return api.NewProcessRegistryClient(c.backend).Watch(ctx, &api.RegistryOperationQuery{PackageId: c.Target.PackageId, Id: id})
 	}
 	if command != "rocron" {
 		return api.NewProcessControlClient(c.backend).Watch(ctx, &api.OperationQuery{Id: id})
@@ -213,7 +211,7 @@ func (c *Client) Submit(ctx context.Context, o Options) (*api.ControlOperation, 
 		if err != nil {
 			return nil, err
 		}
-		return api.NewProcessRegistryClient(c.gateway).Apply(ctx, o.Plan.Request)
+		return api.NewProcessRegistryClient(c.backend).Apply(ctx, o.Plan.Request)
 	}
 	if o.Command == "rocron" {
 		return c.RunCron(ctx, &api.CronRequest{RequestId: o.RequestID, Process: o.Process, Job: o.Job, Arguments: o.Arguments})

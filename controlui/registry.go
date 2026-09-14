@@ -13,14 +13,14 @@ func (c *Client) Registry(ctx context.Context) (*api.RegistryCatalog, error) {
 	if err != nil {
 		return nil, err
 	}
-	return api.NewProcessRegistryClient(c.gateway).Catalog(ctx, &api.RegistryQuery{PackageId: c.Target.PackageId, Timezone: c.Config.Timezone})
+	return api.NewProcessRegistryClient(c.backend).Catalog(ctx, &api.RegistryQuery{PackageId: c.Target.PackageId, Timezone: c.Config.Timezone})
 }
 func (c *Client) PreviewRegistry(ctx context.Context, o Options) (*api.RegistryPlan, error) {
 	ctx, err := c.Context(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return api.NewProcessRegistryClient(c.gateway).Preview(ctx, &api.RegistryRequest{PackageId: c.Target.PackageId, RequestId: o.RequestID, Action: o.Action, Process: o.Process, Group: o.RegistryGroup})
+	return api.NewProcessRegistryClient(c.backend).Preview(ctx, &api.RegistryRequest{PackageId: c.Target.PackageId, RequestId: o.RequestID, Action: o.Action, Process: o.Process, Group: o.RegistryGroup})
 }
 
 type registryPreview struct {
