@@ -53,3 +53,7 @@ executors do not touch production programs.
 
 The heartbeat test intentionally waits for the production 10s interval, injects
 a failed heartbeat, and checks reconnect with the same credential and one Detach.
+
+## Between-server countdown
+
+Jupiter reports `next_target_start_at` (Unix milliseconds). The existing one-second TUI tick renders the remaining time and next server; after the deadline it shows that start confirmation is pending. Cancellation and terminal states hide the countdown. JSON snapshots expose the same field. The server controls execution timing; the displayed countdown uses the CLI clock.

@@ -20,6 +20,9 @@ func rolloutLabel(p *api.Rollout) string {
 	}
 	switch p.State {
 	case "RUNNING":
+		if p.NextTargetStartAt > 0 {
+			return "다음 서버 배포 대기 중"
+		}
 		return "배포 진행 중"
 	case "WAITING":
 		return "첫 서버 완료 · 승인 대기"
@@ -128,6 +131,9 @@ func (m *model) chooseAction() tea.Cmd {
 }
 func lifecycleDetails(p *api.Rollout) []string {
 	result := []string{rolloutLabel(p)}
+	if line := targetCountdown(p, time.Now()); line != "" {
+		result = append(result, line)
+	}
 	if lifecycle.Terminal(p.State) {
 		result = append(result, "실행 중인 작업 없음 · 새 배포 가능")
 	} else {
@@ -179,4 +185,20 @@ func (m *model) activityScreen() screenContent {
 		c.details = []string{"로컬 FAR를 선택하거나 기존 업로드 파일로 새 배포를 준비합니다.", "이 화면은 조회만 합니다. 닫아도 다른 CLI가 시작한 배포에는 영향이 없습니다."}
 	}
 	return c
+}
+
+func targetCountdown(p *api.Rollout, now time.Time) string {
+	if p.State != "RUNNING" || p.CancelRequested || p.NextTargetStartAt <= 0 {
+		return ""
+	}
+	for i, t := range p.Targets {
+		if t.Operation.State != "SUCCEEDED" {
+			remaining := p.NextTargetStartAt - now.UnixMilli()
+			if remaining <= 0 {
+				return fmt.Sprintf("%d번 서버 (%s) 배포 시작 확인 중", i+1, t.Target.PackageId)
+			}
+			return fmt.Sprintf("%d번 서버 완료 · %d번 서버 (%s) 배포까지 %d초", i, i+1, t.Target.PackageId, (remaining+999)/1000)
+		}
+	}
+	return ""
 }
