@@ -374,6 +374,9 @@ func (m *model) renderBody(width, height int) []string {
 }
 
 func (m *model) screen(width int) screenContent {
+	if m.view == "activity" {
+		return m.activityScreen()
+	}
 	c := screenContent{selected: m.cursor}
 	switch m.view {
 	case "artifacts":
@@ -519,17 +522,17 @@ func (m *model) screen(width int) screenContent {
 		c.title, c.description = "Rollouts", "저장된 배포를 선택하면 진행 상황에 다시 연결합니다."
 		c.listTitle, c.detailTitle, c.rowHeader = "SAVED ROLLOUTS", "SELECTED ROLLOUT", "  STATE / GROUP / PROCESS"
 		for _, p := range m.rollouts {
-			c.rows = append(c.rows, fit(clean(p.State), 12)+" "+clean(p.Group)+" / "+clean(p.Artifact.Process))
+			c.rows = append(c.rows, fit(clean(rolloutLabel(p)), 12)+" "+clean(p.Group)+" / "+clean(p.Artifact.Process))
 		}
 		if m.cursor >= 0 && m.cursor < len(m.rollouts) {
 			p := m.rollouts[m.cursor]
-			c.details = []string{field("Rollout", p.Id), field("상태", p.State), field("그룹", p.Group), field("프로세스", p.Artifact.Process), field("배포자", p.CreatedBy), field("등록 시간", localTimestamp(p.CreatedAt)), "", clean(p.Message)}
+			c.details = []string{field("Rollout", p.Id), field("상태", rolloutLabel(p)), field("그룹", p.Group), field("프로세스", p.Artifact.Process), field("배포자", p.CreatedBy), field("등록 시간", localTimestamp(p.CreatedAt)), "", clean(p.Message)}
 		}
 	case "watch":
 		c.title, c.description = "Deployment progress", "실시간 진행 상황 · Tab 패키지/이벤트 전환"
 		c.listTitle, c.detailTitle, c.rowHeader = "PACKAGE STATUS", "CURRENT PACKAGE", "  PACKAGE / STATE"
 		if p := m.rollout; p != nil {
-			c.title = p.State + " / " + p.Artifact.Process
+			c.title = rolloutLabel(p) + " / " + p.Artifact.Process
 			c.description = p.Group + " · " + shortID(p.Id)
 			for _, t := range p.Targets {
 				c.rows = append(c.rows, clean(t.Target.PackageId)+"  "+clean(t.Operation.State))
@@ -537,7 +540,10 @@ func (m *model) screen(width int) screenContent {
 			if m.cursor >= 0 && m.cursor < len(p.Targets) {
 				t := p.Targets[m.cursor]
 				c.detailTitle = t.Target.PackageId
-				c.details = []string{clean(p.Message)}
+				c.details = append(lifecycleDetails(p), clean(p.Message))
+				if t.Operation.Error != "" {
+					c.details = append(c.details, "서버 오류: "+clean(t.Operation.Error))
+				}
 				if t.SentBytes > 0 {
 					c.details = append(c.details, "Jupiter → Juno "+bar(t.SentBytes, t.TotalBytes))
 				}
@@ -574,6 +580,23 @@ func (m *model) screen(width int) screenContent {
 func (m *model) confirmationLines() []string {
 	lines := []string{}
 	switch m.confirm {
+	case "actions", "conflict":
+		if m.confirm == "conflict" {
+			lines = append(lines, "기존 배포가 같은 대상을 사용 중입니다.", "이번 새 배포는 시작되지 않았습니다.", "")
+		}
+		if m.rollout != nil {
+			lines = append(lines, lifecycleDetails(m.rollout)...)
+			lines = append(lines, "")
+		}
+		for i, label := range m.actionLabels() {
+			prefix := "  "
+			if i == m.menuIndex {
+				prefix = "› "
+			}
+			lines = append(lines, prefix+label)
+		}
+		return append(lines, "", "↑↓ 선택 · Enter 실행 · Esc 상세로")
+
 	case "create":
 		if m.draft != nil && m.artifact != nil {
 			lines = []string{field("프로세스", m.artifact.Process), field("그룹", m.draft.Group), field("첫 패키지", m.draft.FirstPackageId), field("Artifact ID", m.artifact.Id), "", titleStyle.Render("FIXED TARGETS"), clean(strings.Join(m.draft.PackageIds, "\n")), ""}
@@ -582,7 +605,7 @@ func (m *model) confirmationLines() []string {
 			} else {
 				lines = append(lines, "대상이 하나이므로 해당 패키지 배포 후 완료합니다.")
 			}
-			lines = append(lines, field("Request ID", m.draft.RequestId))
+			lines = append(lines, "CLI 종료 시 미실행 대상 취소 · 이미 실행한 대상은 결과까지 확인", field("Request ID", m.draft.RequestId))
 		}
 	case "legacy-group":
 		lines = []string{alertStyle.Render("이 그룹은 신규(v2) 방식으로 배포할 수 없습니다"), "", field("그룹", m.legacyGroup), "legacy Juno 패키지:"}
@@ -610,6 +633,14 @@ func (m *model) confirmationLines() []string {
 
 func (m *model) footer(width int) []string {
 	state, message := "READY", m.notice
+	if m.client != nil {
+		if notice := m.client.managementNotice(); notice != "" {
+			message = notice
+		}
+	}
+	if m.connectionLost {
+		message = "연결 복구 중 · 현재 화면은 마지막 수신 상태"
+	}
 	if m.view == "legacy" && m.legacy.State != "" {
 		state = m.legacy.State
 	}
@@ -637,7 +668,7 @@ func (m *model) footer(width int) []string {
 		state = m.connection.failure.Code
 	}
 	keys := "↑↓ 선택  Enter 진행  i ID/해시  r 새로고침"
-	global := "q 종료  u Upload  a Artifacts  l Rollouts  Tab 영역  PgUp/PgDn 스크롤"
+	global := "q 종료  u 새 배포  a 배포본  l 기존 작업  Tab 영역"
 	switch {
 	case m.view == "connection":
 		keys, global = "r 설정 재조회·재시도  d 상세  q 종료", "접속·인증 오류로 업로드·배포 요청은 제출되지 않았습니다."
@@ -655,6 +686,8 @@ func (m *model) footer(width int) []string {
 		if m.view == "upload" || m.view == "legacy" {
 			global = "업로드 전송 중 종료하면 전송이 중단될 수 있습니다."
 		}
+	case m.confirm == "actions" || m.confirm == "conflict":
+		keys, global = "↑↓ 선택  Enter 진행  Esc 상세로", "q 종료"
 	case m.confirm != "":
 		keys, global = "Enter 확인 후 실행  Esc 취소", "PgUp/PgDn 스크롤  q 종료"
 	case m.view == "upload" || m.view == "legacy":
@@ -664,16 +697,19 @@ func (m *model) footer(width int) []string {
 			global = "Tab 영역  PgUp/PgDn 스크롤  q 종료 · HTTP legacy"
 		}
 	case m.view == "watch":
-		keys = "↑↓ 스크롤  f 최신  x 나머지 중단  q 화면 닫기"
+		keys = "Enter 동작 메뉴  ↑↓ 스크롤  x 취소  q 종료"
 		if m.rollout != nil {
 			if m.rollout.State == "WAITING" {
-				keys = "c 나머지 승인  x 나머지 중단  q 화면 닫기"
+				keys = "Enter 동작 메뉴  c 나머지 승인  x 취소  q 종료"
 			} else if m.rollout.State == "FAILED" || m.rollout.State == "ATTENTION" {
-				keys = "r 재조회/재시도  x 나머지 중단  q 화면 닫기"
+				keys = "Enter 동작 메뉴  r 재조회/재시도  q 종료"
 			} else if m.rollout.State == "SUCCEEDED" || m.rollout.State == "CANCELLED" {
-				keys = "↑↓ 스크롤  f 최신  q 화면 닫기"
+				keys = "Enter 동작 메뉴  ↑↓ 스크롤  q 종료"
 			}
 		}
+	}
+	if m.client != nil && m.client.ownsDeployment() && m.confirm == "" {
+		global = "q 종료: 미실행 취소 · 실행 중 대상은 결과 확인"
 	}
 	if m.focusDetail && m.confirm == "" && !m.busy {
 		message = "[상세] " + message

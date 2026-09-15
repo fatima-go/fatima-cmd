@@ -18,10 +18,19 @@ import (
 )
 
 type Client struct {
-	Config  config.JupiterContextRecord
-	conn    *grpc.ClientConn
-	mu      sync.Mutex
-	session *api.Session
+	createMu    sync.Mutex
+	latestOwner string
+	Config      config.JupiterContextRecord
+	conn        *grpc.ClientConn
+	mu          sync.Mutex
+	session     *api.Session
+	ownerMu     sync.Mutex
+	owners      map[string]*ownedDeployment
+	ownerCtx    context.Context
+	ownerCancel context.CancelFunc
+	ownerWG     sync.WaitGroup
+	closeOnce   sync.Once
+	closed      bool
 }
 
 func NewClient(c config.JupiterContextRecord) (*Client, error) {
@@ -29,9 +38,9 @@ func NewClient(c config.JupiterContextRecord) (*Client, error) {
 	if e != nil {
 		return nil, e
 	}
-	return &Client{Config: c, conn: conn}, nil
+	ownerCtx, ownerCancel := context.WithCancel(context.Background())
+	return &Client{Config: c, conn: conn, ownerCtx: ownerCtx, ownerCancel: ownerCancel}, nil
 }
-func (c *Client) Close() { _ = c.conn.Close() }
 func (c *Client) Context(ctx context.Context) (context.Context, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -73,11 +82,28 @@ func (c *Client) Targets(ctx context.Context, group string) (*api.TargetList, er
 	return api.NewDeploymentsClient(c.conn).Targets(ctx, &api.TargetQuery{Group: group})
 }
 func (c *Client) Create(ctx context.Context, q *api.CreateRollout) (*api.Rollout, error) {
+	if err := c.manage(ctx, q); err != nil {
+		return nil, err
+	}
 	ctx, e := c.Context(ctx)
 	if e != nil {
 		return nil, e
 	}
-	return api.NewDeploymentsClient(c.conn).Create(ctx, q)
+	var result *api.Rollout
+	for attempt := 0; attempt < 3; attempt++ {
+		result, e = api.NewDeploymentsClient(c.conn).Create(ctx, q)
+		if e == nil || !uncertainSubmission(e) || ctx.Err() != nil {
+			return result, e
+		}
+		if attempt < 2 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(500 * time.Millisecond):
+			}
+		}
+	}
+	return result, e
 }
 func (c *Client) Act(ctx context.Context, q *api.RolloutAction) (*api.Rollout, error) {
 	ctx, e := c.Context(ctx)

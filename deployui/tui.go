@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/fatima-go/fatima-cmd/config"
 	"github.com/fatima-go/fatima-core/opm/api"
+	"github.com/fatima-go/fatima-core/opm/lifecycle"
 	"github.com/fatima-go/fatima-core/opm/transport"
 	"golang.org/x/term"
 )
@@ -65,6 +66,9 @@ type model struct {
 	lastError                     string
 	legacyGroup                   string
 	legacyTargets                 []string
+	menuIndex                     int
+	replaceAfterCancel            bool
+	connectionLost                bool
 }
 
 var titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("222"))
@@ -96,6 +100,7 @@ func runWithReader(read contextReader, o Options) error {
 	defer cancel()
 	m := newModel(ctx, read, o)
 	defer func() {
+		cancel() // Interrupt in-flight UI requests before detaching the owner.
 		if m.client != nil {
 			m.client.Close()
 		}
@@ -136,6 +141,9 @@ func (m *model) task(kind string, fn func(context.Context) (any, error)) tea.Cmd
 	}
 }
 func (m *model) load() tea.Cmd {
+	if m.view == "activity" {
+		return m.recentRollouts()
+	}
 	if m.view == "rollouts" {
 		return m.task("rollouts", func(ctx context.Context) (any, error) { return m.client.Rollouts(ctx) })
 	}
@@ -248,7 +256,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			switch m.view {
 			case "upload":
-				return m, m.localScan()
+				return m, m.recentRollouts()
 			case "watch":
 				return m, m.task("watch", func(ctx context.Context) (any, error) { return m.client.Get(ctx, m.opts.Value) })
 			default:
@@ -277,13 +285,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.follow && m.focusDetail {
 					m.cursor = activePackage(m.rollout)
 				}
-				m.notice = "Connected · progress comes from Jupiter / Juno"
+				m.connectionLost = false
+				m.notice = "서버 연결됨 · " + rolloutLabel(m.rollout)
+				if m.replaceAfterCancel && lifecycle.Terminal(m.rollout.State) && m.draft != nil {
+					m.restoreDraft()
+				}
 			}
 			return m, m.next()
 		}
 		if v.kind == "reconnect" {
 			if m.view == "watch" && m.rollout != nil && m.rollout.Id == v.id {
-				m.notice = "Connection lost. Reconnecting to the same rollout; server work continues."
+				m.connectionLost = true
+				m.notice = "연결 복구 중 · 표시된 상태는 마지막 수신 결과입니다"
 			}
 			return m, m.next()
 		}
@@ -309,8 +322,21 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if v.err != nil {
 			m.notice = v.err.Error()
 			m.lastError = m.notice
+			if v.kind == "recent" {
+				m.notice = "기존 작업 조회 실패 · l로 다시 확인할 수 있습니다"
+				return m, m.localScan()
+			}
 			if v.kind == "create" {
-				m.notice += " · Submission may have been accepted. Open rollouts or retry this same confirmation / request ID."
+				if id := conflictRollout(v.err); id != "" {
+					m.confirm = ""
+					m.lastError = ""
+					return m, m.task("conflict", func(ctx context.Context) (any, error) { return m.client.Get(ctx, id) })
+				}
+				if uncertainSubmission(v.err) {
+					m.notice += " · 같은 요청으로 자동 확인했지만 응답이 없습니다. 기존 작업 목록에서 결과를 확인할 수 있습니다"
+				} else {
+					m.notice += " · 이번 새 배포는 시작되지 않았습니다"
+				}
 			}
 			if v.kind == "upload" {
 				return m, m.next()
@@ -319,6 +345,23 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.lastError = ""
 		switch v.kind {
+		case "recent":
+			m.rollouts = v.value.(*api.RolloutList).Rollouts
+			sortActivity(m.rollouts)
+			if len(m.rollouts) == 0 {
+				return m, m.localScan()
+			}
+			m.view = "activity"
+			m.cursor = 1
+			m.focusDetail = false
+			m.notice = "이전 배포를 확인하거나 새 배포를 준비하세요"
+			return m, m.next()
+		case "conflict":
+			m.startWatch(v.value.(*api.Rollout))
+			m.confirm = "conflict"
+			m.menuIndex = 0
+			m.notice = "기존 작업과 충돌 · 이번 새 배포는 시작되지 않았습니다"
+			return m, m.next()
 		case "local-files":
 			m.locals = v.value.(localFiles)
 			m.notice = m.locals.Warning
@@ -347,7 +390,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.notice = "Jupiter authentication passed · artifacts loaded"
 		case "rollouts":
 			m.rollouts = v.value.(*api.RolloutList).Rollouts
-			m.notice = "Saved rollouts loaded"
+			sortActivity(m.rollouts)
+			m.notice = "기존 배포 목록 · Enter 상세 보기 → Enter 동작 메뉴"
 		case "targets":
 			m.targets = v.value.(*api.TargetList).Targets
 			m.view = "targets"
@@ -362,6 +406,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "create", "watch", "action":
 			m.startWatch(v.value.(*api.Rollout))
 			m.confirm = ""
+			if m.replaceAfterCancel && lifecycle.Terminal(m.rollout.State) && m.draft != nil {
+				m.restoreDraft()
+			}
 		case "upload":
 			m.artifact = v.value.(*api.Artifact)
 			m.view = "artifacts"
@@ -474,6 +521,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.load()
 		}
 		if m.busy {
+			return m, nil
+		}
+		if m.confirm == "actions" || m.confirm == "conflict" {
+			labels := m.actionLabels()
+			switch key {
+			case "up", "k":
+				m.menuIndex = max(0, m.menuIndex-1)
+			case "down", "j":
+				m.menuIndex = min(len(labels)-1, m.menuIndex+1)
+			case "enter":
+				return m, m.chooseAction()
+			}
 			return m, nil
 		}
 		if m.confirm != "" {
@@ -637,6 +696,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter":
 			switch m.view {
+			case "activity":
+				if m.cursor == 0 {
+					m.view = "upload"
+					return m, m.localScan()
+				}
+				if m.cursor <= len(m.rollouts) {
+					m.startWatch(m.rollouts[m.cursor-1])
+				}
+			case "watch":
+				m.confirm = "actions"
+				m.menuIndex = 0
 			case "artifacts":
 				if m.cursor >= 0 && m.cursor < len(m.artifacts) {
 					m.artifact = m.artifacts[m.cursor]
@@ -763,6 +833,8 @@ func (m *model) count() int {
 	switch m.view {
 	case "upload", "legacy":
 		return len(m.locals.Files)
+	case "activity":
+		return 1 + len(m.rollouts)
 	case "watch":
 		if m.rollout != nil {
 			return len(m.rollout.Targets)
