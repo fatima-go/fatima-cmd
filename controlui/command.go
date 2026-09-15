@@ -28,7 +28,7 @@ type Options struct {
 	All                                                           bool
 	Targets                                                       []string
 	Level                                                         string
-	pickPackage                                                   bool // rolog screen lists packages instead of failing
+	pickPackage                                                   bool // interactive commands can select a package
 }
 
 func Main(command string, legacyMain func()) error {
@@ -49,7 +49,7 @@ func Main(command string, legacyMain func()) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	if !opts.JSON && !opts.Plain && !opts.Listing && term.IsTerminal(int(os.Stdin.Fd())) {
-		opts.pickPackage = opts.Command == "rolog" || opts.Command == "rohis"
+		opts.pickPackage = opts.Command == "rolog" || opts.Command == "rohis" || opts.Command == "rostop" || opts.Command == "roproc"
 		m := model{opts: opts, ctx: ctx, stage: "select", width: 100, height: 30, status: "접속 확인 중"}
 		final, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
 		if err != nil {
@@ -60,6 +60,7 @@ func Main(command string, legacyMain func()) error {
 			result.client.Close()
 		}
 		if result.fallback {
+			opts = result.opts // Preserve a package selected before legacy fallback.
 			if err := legacyOptionsError(opts); err != nil {
 				return err
 			}

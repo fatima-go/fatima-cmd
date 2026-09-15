@@ -81,7 +81,11 @@ func filteredPackages(c *api.PackageCatalog, o Options, filter string) []*api.Pa
 	return out
 }
 func (m model) visiblePackages() []*api.PackageEntry {
-	return filteredPackages(m.packages, m.opts, m.filter)
+	opts := m.opts
+	if m.stage == "package" && (opts.Command == "rostop" || opts.Command == "roproc") {
+		opts.Group = "" // -g selects a process group, not a package group.
+	}
+	return filteredPackages(m.packages, opts, m.filter)
 }
 func localDate(seconds int64) string {
 	if seconds == 0 {

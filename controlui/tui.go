@@ -73,6 +73,9 @@ func (m model) connect() tea.Cmd {
 	}
 }
 func (m model) load() tea.Cmd {
+	if m.opts.pickPackage && m.client.backend == nil {
+		return m.packageChoices()
+	}
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 		defer cancel()
@@ -134,6 +137,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = v.Width
 		m.height = v.Height
 	case connected:
+		m.busy = false
 		if legacy(v.err) {
 			m.fallback = true
 			return m, tea.Quit
@@ -147,7 +151,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = nil
 		m.status = "목록 조회 중"
 		m.busy = true
-		if m.opts.WatchID != "" {
+		if m.opts.WatchID != "" && m.client.backend != nil {
 			m.opts.RequestID = m.opts.WatchID
 			m.stage = "result"
 			return m, m.watch()
@@ -173,6 +177,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 		m.offset = 0
 		m.status = "작업 선택"
+		if m.opts.pickPackage && v.packages != nil && m.client.backend == nil {
+			m.stage = "package"
+			m.status = "작업할 패키지를 선택하세요 · ↑↓ 이동 · Enter 선택"
+			if len(v.packages.Packages) == 0 {
+				m.status = "등록된 패키지가 없습니다 · r 새로고침 · q 종료"
+			}
+			return m, nil
+		}
+		if m.stage == "package" {
+			m.stage = "select"
+		}
 		if m.opts.Command == "rolog" {
 			return m.loadedLogLevels(), nil
 		}
@@ -472,6 +487,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.stage == "package" {
+			return m.choosePackage(key)
+		}
 		if m.opts.Command == "rolog" {
 			return m.updateLogLevel(key)
 		}
@@ -757,6 +775,10 @@ func (m model) View() string {
 		stages = []string{"package", "select", "level"}
 		labels = []string{"패키지 선택", "프로세스 선택", "로그레벨 변경"}
 	}
+	if m.stage == "package" && m.opts.Command != "rolog" && m.opts.Command != "rohis" {
+		stages = append([]string{"package"}, stages...)
+		labels = append([]string{"패키지 선택"}, labels...)
+	}
 	var rail []string
 	for i, s := range stages {
 		prefix := "  "
@@ -918,6 +940,9 @@ func (m model) View() string {
 		} else {
 			help += "  / 검색  r 갱신  p 패키지"
 		}
+	}
+	if m.stage == "package" {
+		help = "q 종료  ↑↓ 이동  Enter 선택  / 검색  r 갱신"
 	}
 	footer := lipgloss.NewStyle().Foreground(color).Render(line("● "+m.status, width)) + "\n" + line(help, width)
 	return top + "\n" + line(nav, width) + "\n" + body + "\n" + footer

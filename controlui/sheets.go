@@ -169,6 +169,9 @@ func packageFields(p *api.PackageEntry) [][2]string {
 }
 
 func (m model) inventoryLayout() bool {
+	if m.stage == "package" {
+		return m.client != nil && m.packages != nil
+	}
 	if m.opts.Command == "rolog" {
 		return m.client != nil && ((m.stage == "package" && m.packages != nil) || ((m.stage == "select" || m.stage == "level") && m.levels != nil))
 	}
@@ -233,6 +236,9 @@ func (m model) detailScrollLimit() int {
 }
 
 func (m model) inventoryView(width, height int) string {
+	if m.stage == "package" {
+		return m.packagePickerView(width, height)
+	}
 	if m.opts.Command == "rolog" {
 		return m.logLevelView(width, height)
 	}

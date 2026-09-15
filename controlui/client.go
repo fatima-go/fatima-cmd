@@ -88,9 +88,21 @@ func Connect(ctx context.Context, cfg config.JupiterContextRecord, name string, 
 		c.Capabilities = caps
 		return c, nil
 	}
+	if opts.pickPackage && opts.Package == "" && (opts.Command == "rostop" || opts.Command == "roproc") {
+		packages, e := c.Packages(ctx)
+		if e != nil {
+			return nil, e
+		}
+		if len(packages.Packages) != 1 {
+			c.Target = &api.Target{PackageId: "패키지 선택"}
+			c.Capabilities = caps
+			return c, nil
+		}
+		opts.Package = packages.Packages[0].Target.PackageId
+	}
 	c.Target, err = api.NewRoutingClient(c.gateway).Resolve(auth, &api.PackageQuery{PackageId: opts.Package})
 	if code := status.Code(err); opts.pickPackage && opts.Package == "" && (code == codes.FailedPrecondition || code == codes.NotFound) {
-		// Several packages (or none) match this client; the rolog screen lists them.
+		// Several packages (or none) match this client; the interactive screen lists them.
 		c.Target = &api.Target{PackageId: "패키지 선택"}
 		c.Capabilities = caps
 		return c, nil

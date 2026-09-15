@@ -214,6 +214,9 @@ func (m model) updateLogLevel(key string) (tea.Model, tea.Cmd) {
 // choosePackage handles the package list shown when routing could not pick one
 // (or after p). Enter reconnects to the chosen package.
 func (m model) choosePackage(key string) (tea.Model, tea.Cmd) {
+	if m.client == nil {
+		return m, nil
+	}
 	switch key {
 	case "/":
 		m.editing, m.input = "filter", m.filter
@@ -231,6 +234,7 @@ func (m model) choosePackage(key string) (tea.Model, tea.Cmd) {
 		m.client.Close()
 		m.client, m.packages, m.filter, m.cursor, m.err = nil, nil, "", 0, nil
 		m.status = "접속 확인 중"
+		m.busy = true
 		return m, m.connect()
 	default:
 		return m.moveCursor(key), nil
