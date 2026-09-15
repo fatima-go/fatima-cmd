@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/fatima-go/fatima-cmd v0.0.0
-	github.com/fatima-go/fatima-core v1.3.6
+	github.com/fatima-go/fatima-core v1.3.7
 	github.com/fatima-go/juno v0.0.0
 	github.com/fatima-go/jupiter v0.0.0
 	google.golang.org/grpc v1.81.1
@@ -38,8 +38,6 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/fatima-go/fatima-core => ../../fatima-core
 
 replace github.com/fatima-go/fatima-cmd => ..
 

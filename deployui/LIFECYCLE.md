@@ -35,9 +35,8 @@ commands alone are observers and do not acquire ownership.
 
 ## Build and verification
 
-The four sibling checkouts are a coordinated source build. Each consumer's
-go.mod uses `replace github.com/fatima-go/fatima-core => ../fatima-core` until this
-API is published as a module release. Do not build a consumer against v1.3.6 alone.
+Juno, Jupiter and fatima-cmd use the released fatima-core v1.3.7 module without
+a local replace. Standalone builds do not require a sibling fatima-core checkout.
 
 From fatima-cmd:
 
@@ -45,8 +44,8 @@ From fatima-cmd:
     cd integration
     go test ./...
 
-The nested integration module uses sibling jupiter, juno, fatima-core and this
-CLI. It starts real TCP/gRPC servers, uploads a valid test FAR, validates scoped
+The nested integration module uses sibling jupiter, juno and this CLI, together
+with the released fatima-core v1.3.7 module. It starts real TCP/gRPC servers, uploads a valid test FAR, validates scoped
 Jupiter tickets in Juno and checks owner/observer exit, partial success/failure,
 no subsequent target execution and starting a new rollout after cleanup. Test
 executors do not touch production programs.
