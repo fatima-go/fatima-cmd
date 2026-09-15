@@ -129,3 +129,61 @@ func TestLocalViewsAndEmptyEnvironment(t *testing.T) {
 		t.Fatal(m)
 	}
 }
+
+func TestCurrentRevisionIsInformational(t *testing.T) {
+	home := fixture(t)
+	link := filepath.Join(home, "app/sample")
+	before, _ := os.Lstat(link)
+	// Even a running process needs no stop when no change is requested.
+	os.MkdirAll(filepath.Join(link, "proc"), 0755)
+	os.WriteFile(filepath.Join(link, "proc/sample.pid"), []byte(fmt.Sprint(os.Getpid())), 0644)
+	for _, args := range [][]string{{"sample", "version", "R001"}, {"sample", "version"}} {
+		m := newLocalModel(args)
+		if len(args) == 2 {
+			for i, r := range m.revisions {
+				if r.revision == "R001" {
+					m.cursor = i
+				}
+			}
+			m = press(m, tea.KeyEnter)
+		}
+		if m.stage != "version" || m.err != nil || !strings.Contains(m.View(), "변경이 필요하지 않습니다") {
+			t.Fatal(m.View())
+		}
+	}
+	if err := switchLocalRevision(home, "sample", filepath.Join(home, "app/revision/sample/2026_R001")); err != errCurrentRevision {
+		t.Fatal(err)
+	}
+	after, _ := os.Lstat(link)
+	if !os.SameFile(before, after) {
+		t.Fatal("same revision rewrote link")
+	}
+}
+
+func TestRevisionChangesWhileConfirmationIsOpen(t *testing.T) {
+	home := fixture(t)
+	m := newLocalModel([]string{"sample", "version", "R002"})
+	if m.stage != "confirm" {
+		t.Fatal(m)
+	}
+	target := filepath.Join(home, "app/revision/sample/2026_R002")
+	if err := switchLocalRevision(home, "sample", target); err != nil {
+		t.Fatal(err)
+	}
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	next, _ = next.Update(cmd())
+	m = next.(localModel)
+	if m.stage != "version" || m.err != nil || !strings.Contains(m.View(), "변경이 필요하지 않습니다") {
+		t.Fatal(m.View())
+	}
+}
+
+func TestPlainCurrentRevisionDoesNotPrompt(t *testing.T) {
+	fixture(t)
+	oldArgs, oldProc := os.Args, proc
+	defer func() { os.Args, proc = oldArgs, oldProc }()
+	os.Args = []string{"lcproc", "sample", "version", "R001"}
+	proc = "sample"
+	// No stdin is supplied: this must return before the old confirmation loop.
+	versioning()
+}

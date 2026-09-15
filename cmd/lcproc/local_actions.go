@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -104,7 +105,7 @@ func ensureStopped(home, name string) error {
 	return nil
 }
 func switchLocalRevision(home, name, dir string) error {
-	revisions, _, err := localRevisions(home, name)
+	revisions, current, err := localRevisions(home, name)
 	if err != nil {
 		return err
 	}
@@ -116,6 +117,13 @@ func switchLocalRevision(home, name, dir string) error {
 	}
 	if !found {
 		return fmt.Errorf("선택한 리비전이 없어졌습니다. 목록을 새로고침하세요")
+	}
+	same, err := sameRevision(current, dir)
+	if err != nil {
+		return err
+	}
+	if same {
+		return errCurrentRevision
 	}
 	if err = ensureStopped(home, name); err != nil {
 		return err
@@ -212,4 +220,23 @@ func duplicateLocal(home, source, target string) (err error) {
 		return err
 	}
 	return os.Symlink(relative, link)
+}
+
+var errCurrentRevision = errors.New("현재 가리키는 리비전과 동일합니다. 변경이 필요하지 않습니다")
+
+func sameRevision(current, target string) (bool, error) {
+	current, err := filepath.EvalSymlinks(current)
+	if err != nil {
+		return false, err
+	}
+	target, err = filepath.EvalSymlinks(target)
+	if err != nil {
+		return false, err
+	}
+	current, err = filepath.Abs(current)
+	if err != nil {
+		return false, err
+	}
+	target, err = filepath.Abs(target)
+	return current == target, err
 }

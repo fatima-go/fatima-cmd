@@ -101,7 +101,7 @@ func TestRegistryConnectsDirectlyToJuno(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	c, err := Connect(ctx, config.JupiterContextRecord{Jupiter: gatewayEndpoint, Password: password}, "test", Options{Command: "roproc"})
+	c, err := Connect(ctx, config.JupiterContextRecord{Jupiter: gatewayEndpoint, Password: password}, "test", Options{Command: "roproc", Package: "host:package"})
 	if err != nil {
 		t.Fatal(err)
 	}

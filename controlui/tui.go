@@ -150,6 +150,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.client = v.client
+		if m.client.backend != nil {
+			m.opts.Package = m.client.Target.PackageId
+		}
 		m.err = nil
 		m.status = "목록 조회 중"
 		m.busy = true

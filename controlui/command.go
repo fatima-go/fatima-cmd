@@ -30,6 +30,7 @@ type Options struct {
 	Targets                                                       []string
 	Level                                                         string
 	pickPackage                                                   bool // interactive commands can select a package
+	noPackagePrompt                                               bool // explicit --plain/--json
 }
 
 func Main(command string, legacyMain func()) (resultErr error) {
@@ -50,8 +51,8 @@ func Main(command string, legacyMain func()) (resultErr error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if !opts.JSON && !opts.Plain && !opts.Listing && term.IsTerminal(int(os.Stdin.Fd())) {
-		opts.pickPackage = opts.Command == "rolog" || opts.Command == "rohis" || opts.Command == "rostop" || opts.Command == "roproc"
+	if !opts.JSON && !opts.Plain && !opts.Listing && share.PackagePromptAvailable() {
+		opts.pickPackage = opts.Command != "ropack"
 		m := model{opts: opts, ctx: ctx, stage: "select", width: 100, height: 30, status: "접속 확인 중"}
 		final, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
 		if err != nil {
@@ -75,6 +76,7 @@ func Main(command string, legacyMain func()) (resultErr error) {
 		}
 		return result.err
 	}
+	opts.pickPackage = !opts.noPackagePrompt && share.PackagePromptAvailable() && opts.Command != "ropack"
 	check, done := context.WithTimeout(ctx, 10*time.Second)
 	c, err := connect(check, opts)
 	done()
@@ -89,7 +91,37 @@ func Main(command string, legacyMain func()) (resultErr error) {
 	if err != nil {
 		return err
 	}
+	if c.backend == nil && opts.pickPackage {
+		query, cancel := context.WithTimeout(ctx, 10*time.Second)
+		catalog, listErr := c.Packages(query)
+		cancel()
+		c.Close()
+		if listErr != nil {
+			return listErr
+		}
+		opts.Package, err = share.ChoosePackage(packageChoices(catalog), true)
+		if err != nil {
+			return err
+		}
+		check, done = context.WithTimeout(ctx, 10*time.Second)
+		c, err = connect(check, opts)
+		done()
+		if legacy(err) {
+			if err := legacyOptionsError(opts); err != nil {
+				return err
+			}
+			restoreLegacyArgs(opts)
+			legacyMain()
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
 	defer c.Close()
+	if opts.pickPackage && opts.Package == "" {
+		fmt.Fprintf(os.Stderr, "선택된 패키지: %s\n", c.Target.PackageId)
+	}
 	return runPlain(ctx, c, opts)
 }
 func legacyOptionsError(o Options) error {
@@ -134,6 +166,7 @@ func parse(command string, args []string) (Options, error) {
 	if err := f.Parse(args); err != nil {
 		return o, err
 	}
+	o.noPackagePrompt = o.Plain || o.JSON
 	if command == "roproc" && len(f.Args()) > 0 {
 		args := f.Args()
 		if len(args) < 2 || len(args) > 3 || (args[0] != "add" && args[0] != "remove") || (args[0] == "remove" && len(args) != 2) {
@@ -186,6 +219,9 @@ func parse(command string, args []string) (Options, error) {
 }
 func restoreLegacyArgs(o Options) {
 	args := []string{os.Args[0]}
+	if o.noPackagePrompt {
+		args = append(args, "--plain")
+	}
 	if o.Package != "" {
 		args = append(args, "-p", o.Package)
 	}

@@ -49,6 +49,7 @@ type FatimaCmdFlags struct {
 	JupiterUri  string
 	Timezone    string
 	Debug       bool
+	Plain       bool
 	UserPackage string
 	Args        []string
 	Token       string
@@ -132,6 +133,7 @@ func BuildFatimaCmdFlags() (FatimaCmdFlags, error) {
 		return cmdFlags, err
 	}
 
+	flag.BoolVar(&cmdFlags.Plain, "plain", false, "do not prompt for a package")
 	flag.BoolVar(&cmdFlags.Debug, "d", false, "Debug mode")
 	flag.StringVar(&cmdFlags.UserPackage, "p", "", "Host and Package. e.g) localhost:default")
 

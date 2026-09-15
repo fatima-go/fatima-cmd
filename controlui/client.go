@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/fatima-go/fatima-cmd/cipher"
 	"github.com/fatima-go/fatima-cmd/config"
+	"github.com/fatima-go/fatima-cmd/share"
 	"github.com/fatima-go/fatima-opm/api"
 	"github.com/fatima-go/fatima-opm/transport"
 	"google.golang.org/grpc"
@@ -88,12 +89,16 @@ func Connect(ctx context.Context, cfg config.JupiterContextRecord, name string, 
 		c.Capabilities = caps
 		return c, nil
 	}
-	if opts.pickPackage && opts.Package == "" && (opts.Command == "rostop" || opts.Command == "roproc") {
+	if opts.Package == "" {
 		packages, e := c.Packages(ctx)
 		if e != nil {
 			return nil, e
 		}
 		if len(packages.Packages) != 1 {
+			if !opts.pickPackage {
+				_, e = share.ChoosePackage(packageChoices(packages), false)
+				return nil, e
+			}
 			c.Target = &api.Target{PackageId: "패키지 선택"}
 			c.Capabilities = caps
 			return c, nil
@@ -101,12 +106,6 @@ func Connect(ctx context.Context, cfg config.JupiterContextRecord, name string, 
 		opts.Package = packages.Packages[0].Target.PackageId
 	}
 	c.Target, err = api.NewRoutingClient(c.gateway).Resolve(auth, &api.PackageQuery{PackageId: opts.Package})
-	if code := status.Code(err); opts.pickPackage && opts.Package == "" && (code == codes.FailedPrecondition || code == codes.NotFound) {
-		// Several packages (or none) match this client; the interactive screen lists them.
-		c.Target = &api.Target{PackageId: "패키지 선택"}
-		c.Capabilities = caps
-		return c, nil
-	}
 	if err != nil {
 		return nil, err
 	}

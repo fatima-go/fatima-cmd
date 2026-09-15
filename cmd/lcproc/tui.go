@@ -1,9 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -47,9 +47,7 @@ func newLocalModel(args []string) localModel {
 					found = false
 					for _, r := range m.revisions {
 						if strings.EqualFold(r.revision, args[2]) {
-							m.chosen = r
-							m.action = "version"
-							m.stage = "confirm"
+							m.selectRevision(r)
 							found = true
 							break
 						}
@@ -73,6 +71,7 @@ func newLocalModel(args []string) localModel {
 }
 func (m localModel) Init() tea.Cmd { return nil }
 func (m *localModel) openVersions() {
+	m.notice = ""
 	m.revisions, m.current, m.err = localRevisions(m.home, m.name)
 	m.stage = "version"
 	m.cursor = 0
@@ -87,7 +86,7 @@ func (m localModel) rows() []string {
 		var rows []string
 		for _, r := range m.revisions {
 			mark := ""
-			if filepath.Clean(r.dir) == filepath.Clean(m.current) {
+			if same, _ := sameRevision(m.current, r.dir); same {
 				mark = " [현재]"
 			}
 			rows = append(rows, r.revision+mark+"  "+r.GetBuildSummary())
@@ -103,6 +102,11 @@ func (m localModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case localDone:
 		m.busy = false
 		m.err = v.err
+		if errors.Is(v.err, errCurrentRevision) {
+			m.openVersions()
+			m.notice = errCurrentRevision.Error() + ". 다른 리비전을 선택하세요."
+			return m, nil
+		}
 		if v.err == nil {
 			m.stage = "result"
 			if m.action == "version" {
@@ -121,6 +125,7 @@ func (m localModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if key == "esc" {
 			m.err = nil
+			m.notice = ""
 			m.cursor = 0
 			if m.stage == "process" {
 				return m, tea.Quit
@@ -186,10 +191,7 @@ func (m localModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "version":
 				if len(m.revisions) > 0 {
-					m.chosen = m.revisions[m.cursor]
-					m.action = "version"
-					m.stage = "confirm"
-					m.err = nil
+					m.selectRevision(m.revisions[m.cursor])
 				}
 			case "confirm":
 				m.busy = true
@@ -201,6 +203,7 @@ func (m localModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return localDone{duplicateLocal(m.home, m.name, m.target)}
 				}
 			case "result":
+				m.notice = ""
 				m.stage = "process"
 				m.cursor = 0
 				m.names, m.err = localProcesses(m.home)
@@ -243,6 +246,9 @@ func (m localModel) View() string {
 	if len(rows) == 0 && (m.stage == "process" || m.stage == "version") {
 		lines = append(lines, "표시할 항목이 없습니다. r 새로고침")
 	}
+	if m.notice != "" && m.stage != "result" {
+		lines = append(lines, "안내: "+m.notice)
+	}
 	if m.err != nil {
 		lines = append(lines, "오류: "+m.err.Error())
 	}
@@ -264,4 +270,26 @@ func (m localModel) View() string {
 		lines[i] = ansi.Truncate(strings.ReplaceAll(ansi.Strip(s), "\n", " "), width, "…")
 	}
 	return strings.Join(lines, "\n")
+}
+
+func (m *localModel) selectRevision(r Revision) {
+	m.notice, m.err = "", nil
+	// Re-read the link: another command may have switched it since listing.
+	_, current, err := localRevisions(m.home, m.name)
+	if err != nil {
+		m.err = err
+		return
+	}
+	m.current = current
+	same, err := sameRevision(current, r.dir)
+	if err != nil {
+		m.err = err
+		return
+	}
+	if same {
+		m.stage = "version"
+		m.notice = fmt.Sprintf("이미 %s 리비전을 가리키고 있습니다. 변경이 필요하지 않습니다.", r.revision)
+		return
+	}
+	m.chosen, m.action, m.stage = r, "version", "confirm"
 }

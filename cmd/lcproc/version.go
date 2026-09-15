@@ -24,7 +24,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/fatima-go/fatima-cmd/share"
 	"os"
@@ -81,6 +80,15 @@ func versioning() {
 		return
 	}
 
+	same, err := sameRevision(filepath.Join(os.Getenv(share.EnvFatimaHome), share.FatimaFolderApp, proc), newRevision.dir)
+	if err != nil {
+		fmt.Printf("리비전 확인 실패: %s\n", err)
+		return
+	}
+	if same {
+		fmt.Printf("%s: 이미 %s 리비전을 가리키고 있습니다. 변경이 필요하지 않습니다.\n", proc, newRevision.revision)
+		return
+	}
 	reader := bufio.NewReader(os.Stdin)
 	for true {
 		fmt.Printf("%s :: reset to revision %s? (y/n) ", proc, newVersion)
@@ -96,18 +104,9 @@ func versioning() {
 		}
 	}
 
-	pid := readPidFromFile(proc)
-	if pid > 0 {
-		if isPidExist(pid) {
-			fmt.Printf("pid %d exist. firstly, you have to stop process\n", pid)
-			return
-		}
-	}
-
-	// link again to new version
-	err = linkRevision(proc, newRevision)
+	err = switchLocalRevision(os.Getenv(share.EnvFatimaHome), proc, newRevision.dir)
 	if err != nil {
-		fmt.Printf("fail to link revision to %s : %s\n", newVersion, err.Error())
+		fmt.Printf("%s\n", err)
 		return
 	}
 
@@ -281,23 +280,6 @@ func getVersion(revisions []Revision, newVer string) (Revision, bool) {
 	return Revision{}, false
 }
 
-func readPidFromFile(procName string) int {
-	pidFile := filepath.Join(os.Getenv(share.EnvFatimaHome), share.FatimaFolderApp, procName, share.FatimaFolderAppProc, procName+".pid")
-
-	data, err := os.ReadFile(pidFile)
-	if err != nil {
-		return 0
-	}
-	var pid = 0
-	pid, err = strconv.Atoi(strings.Trim(string(data), "\r\n"))
-	if err != nil {
-		fmt.Errorf("fail to parse proc[%s] pid value to int : %s\n", procName, err.Error())
-		return 0
-	}
-
-	return pid
-}
-
 func linkRevision(proc string, revision Revision) error {
 	// unlink $FATIMA_HOME/app/example
 	appDir := filepath.Join(os.Getenv(share.EnvFatimaHome), share.FatimaFolderApp)
@@ -329,49 +311,4 @@ func linkRevision(proc string, revision Revision) error {
 	}
 
 	return nil
-}
-
-func executeShell(command string) (string, error) {
-	if len(command) == 0 {
-		return "", errors.New("empty command")
-	}
-
-	var cmd *exec.Cmd
-	cmd = exec.Command("/bin/sh", "-c", command)
-
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err := cmd.Run()
-	if err != nil {
-		return "", err
-	}
-	return out.String(), nil
-}
-
-func isPidExist(pid int) bool {
-	command := fmt.Sprintf("ps")
-	out, err := executeShell(command)
-	if err != nil {
-		fmt.Printf("fail to execute command : %s\n", err.Error())
-		return true
-	}
-
-	scanner := bufio.NewScanner(strings.NewReader(out))
-	for scanner.Scan() {
-		line := scanner.Text()
-		line = strings.TrimLeft(line, "\r\t\n ")
-		items := strings.Split(line, " ")
-		if len(items) < 1 {
-			continue
-		}
-		procId, err := strconv.Atoi(items[0])
-		if err != nil {
-			continue
-		}
-		if procId == pid {
-			return true
-		}
-	}
-
-	return false
 }

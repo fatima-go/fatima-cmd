@@ -27,8 +27,8 @@ func TestControlPackagePickerRouting(t *testing.T) {
 	registry := &directRegistry{calls: map[string]int{}}
 	backend := grpc.NewServer()
 	api.RegisterProcessRegistryServer(backend, registry)
-	endpoint := registryTestEndpoint(t, backend, &api.Capabilities{Server: "juno", ApiVersion: 2, PackageId: "host:package", Features: []string{"roproc", "rostop"}})
-	for _, command := range []string{"roproc", "rostop"} {
+	endpoint := registryTestEndpoint(t, backend, &api.Capabilities{Server: "juno", ApiVersion: 2, PackageId: "host:package", Features: []string{"roproc", "rostop", "rostart", "rocron", "rolog", "rohis"}})
+	for _, command := range []string{"roproc", "rostop", "rostart", "rocron", "rolog", "rohis"} {
 		for _, count := range []int{0, 1, 2} {
 			for _, explicit := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/%d/explicit=%t", command, count, explicit), func(t *testing.T) {
@@ -73,7 +73,7 @@ func TestControlPackagePickerRouting(t *testing.T) {
 }
 
 func TestControlPackagePickerPreservesActionAndProcessGroup(t *testing.T) {
-	for _, command := range []string{"rostop", "roproc"} {
+	for _, command := range []string{"rostop", "roproc", "rostart", "rocron", "rolog", "rohis"} {
 		m := model{ctx: context.Background(), opts: Options{Command: command, pickPackage: true, Action: "remove", Process: "worker", Group: "svc"}, stage: "select", width: 100, height: 30, client: &Client{Target: &api.Target{PackageId: "패키지 선택"}}}
 		catalog := &api.PackageCatalog{Packages: []*api.PackageEntry{
 			{Target: &api.Target{PackageId: "a:default", Group: "backend"}},
@@ -110,5 +110,69 @@ func TestControlPackagePickerPreservesActionAndProcessGroup(t *testing.T) {
 			t.Fatal("connection error prevents retry")
 		}
 		next.(model).Update(tea.KeyMsg{Type: tea.KeyEsc})
+	}
+}
+
+func TestPackagePromptModeParsing(t *testing.T) {
+	for _, tc := range []struct {
+		command string
+		args    []string
+		blocked bool
+	}{
+		{"rocron", []string{"-l"}, false},
+		{"rolog", []string{"worker", "info"}, false},
+		{"rohis", []string{"worker"}, false},
+		{"rohis", []string{"-g", "svc"}, false},
+		{"rocron", []string{"--plain", "-l"}, true},
+		{"rohis", []string{"--json"}, true},
+	} {
+		o, err := parse(tc.command, tc.args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if o.noPackagePrompt != tc.blocked {
+			t.Fatalf("%s %v: %+v", tc.command, tc.args, o)
+		}
+	}
+}
+
+func TestNonInteractivePackageSelection(t *testing.T) {
+	for _, count := range []int{0, 1, 2} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			inventory := &pickerInventory{catalog: &api.PackageCatalog{}}
+			for i := 0; i < count; i++ {
+				inventory.catalog.Packages = append(inventory.catalog.Packages, &api.PackageEntry{Target: &api.Target{PackageId: "host:package"}})
+			}
+			backend := grpc.NewServer()
+			endpoint := registryTestEndpoint(t, backend, &api.Capabilities{Server: "juno", ApiVersion: 2, PackageId: "host:package", Features: []string{"rocron"}})
+			gateway := grpc.NewServer()
+			api.RegisterIdentityServer(gateway, &registryIdentity{})
+			api.RegisterRoutingServer(gateway, &registryRouting{endpoint: endpoint})
+			api.RegisterPackageInventoryServer(gateway, inventory)
+			url := registryTestEndpoint(t, gateway, &api.Capabilities{Server: "jupiter", ApiVersion: 2, Features: []string{"routing"}})
+			password, _ := cipher.Aes256Encode("password")
+			c, err := Connect(context.Background(), config.JupiterContextRecord{Jupiter: url, Password: password}, "test", Options{Command: "rocron"})
+			if count == 1 {
+				if err != nil {
+					t.Fatal(err)
+				}
+				c.Close()
+			} else if err == nil {
+				c.Close()
+				t.Fatal("ambiguous package was resolved")
+			}
+		})
+	}
+}
+
+func TestReopenedPackagePickerShowsOtherPackages(t *testing.T) {
+	for _, command := range []string{"rolog", "rohis", "rostart", "rostop", "roproc", "rocron"} {
+		m := model{stage: "package", opts: Options{Command: command, Package: "a:default", Group: "svc"}, packages: &api.PackageCatalog{Packages: []*api.PackageEntry{
+			{Target: &api.Target{PackageId: "a:default", Group: "backend"}},
+			{Target: &api.Target{PackageId: "b:default", Group: "backend"}},
+		}}}
+		if len(m.visiblePackages()) != 2 {
+			t.Fatal(command, "hid other packages")
+		}
 	}
 }

@@ -82,8 +82,9 @@ func filteredPackages(c *api.PackageCatalog, o Options, filter string) []*api.Pa
 }
 func (m model) visiblePackages() []*api.PackageEntry {
 	opts := m.opts
-	if m.stage == "package" && (opts.Command == "rostop" || opts.Command == "roproc") {
-		opts.Group = "" // -g selects a process group, not a package group.
+	if m.stage == "package" && opts.Command != "ropack" {
+		opts.Group = ""   // -g selects a process group, not a package group.
+		opts.Package = "" // Reopening the picker must also show other packages.
 	}
 	return filteredPackages(m.packages, opts, m.filter)
 }
@@ -152,4 +153,18 @@ func printPackages(c *api.PackageCatalog) error {
 	share.PrintTable([]string{"group", "package", "endpoint", "platform", "status", "transport", "registered"}, rows)
 	fmt.Printf("Total group:%d, host:%d, package:%d · Juno API availability (application health not checked)\n", len(groups), len(hosts), len(rows))
 	return nil
+}
+
+func packageChoices(catalog *api.PackageCatalog) []share.PackageChoice {
+	var choices []share.PackageChoice
+	if catalog == nil {
+		return choices
+	}
+	for _, p := range catalog.Packages {
+		if p == nil || p.Target == nil {
+			continue
+		}
+		choices = append(choices, share.PackageChoice{ID: p.Target.PackageId, Group: p.Target.Group, Endpoint: p.Target.Endpoint, State: p.State})
+	}
+	return choices
 }

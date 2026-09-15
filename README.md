@@ -11,3 +11,13 @@ Run `lcproc` in a terminal to choose a local process, inspect/switch revisions, 
 - Changes require an explicit confirmation. Revision switching requires the process to be stopped and does not start it automatically.
 - Duplication copies matching executable/configuration files, without subdirectories, and requires subsequent registration using `roproc add`.
 - Use `lcproc --plain sample version` for the existing text workflow. Non-terminal invocation also retains that workflow.
+
+## Package selection
+
+For `rostart`, `rostop`, `roproc`, `rocron`, `rolog`, `rohis`, `rodis`, `roclip`, and `roclric`, an explicit `-p host:package` selects that package. Without `-p`, one registered package is selected automatically; multiple packages require selection in a terminal. No registered packages produces guidance to check `ropack`.
+
+The same selection applies before reports such as `rocron -l`, `rohis PROCESS`, and direct `rolog PROCESS LEVEL` changes, as well as the legacy HTTP paths. Process/group/action arguments remain intact after selection. `--plain`, `--json` (where supported), and non-terminal execution never prompt: specify `-p` when multiple packages are registered.
+
+`ropack` continues to show all packages, and `rodeploy` retains its deployment target selection flow.
+
+`lcproc` treats selecting the currently linked revision as an informational no-op, without requesting a stop or rewriting the link. This also applies to revision arguments and `--plain`.

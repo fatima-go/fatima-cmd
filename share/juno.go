@@ -32,6 +32,16 @@ func GetJunoEndpoint(flags *FatimaCmdFlags) error {
 		return fmt.Errorf("auth fail : %s\n", err.Error())
 	}
 
+	if flags.UserPackage == "" {
+		choices, err := legacyPackageChoices(*flags)
+		if err != nil {
+			return err
+		}
+		flags.UserPackage, err = ChoosePackage(choices, !flags.Plain && PackagePromptAvailable())
+		if err != nil {
+			return err
+		}
+	}
 	url := flags.JupiterUri + v1EndpointResourceUrl
 
 	var b []byte
