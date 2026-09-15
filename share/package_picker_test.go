@@ -3,6 +3,8 @@ package share
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -66,8 +68,12 @@ func TestLegacyEndpointPackageSelection(t *testing.T) {
 					case "/juno/retrieve/v1":
 						resolves++
 						var q map[string]string
-						if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
+						if err := json.NewDecoder(r.Body).Decode(&q); err != nil && err != io.EOF {
 							t.Error(err)
+						}
+						if q["package"] == "" {
+							fmt.Fprint(w, `{"system":{"code":500,"message":"there are many host(package) exist. you have to specify host:package with option -p"}}`)
+							return
 						}
 						want := "h0:default"
 						if explicit {
@@ -89,10 +95,14 @@ func TestLegacyEndpointPackageSelection(t *testing.T) {
 				}
 				err := GetJunoEndpoint(&flags)
 				if explicit || count == 1 {
-					if err != nil || resolves != 1 {
+					wantResolves := 2
+					if explicit {
+						wantResolves = 1
+					}
+					if err != nil || resolves != wantResolves {
 						t.Fatal(err, resolves)
 					}
-				} else if err == nil || resolves != 0 {
+				} else if err == nil || resolves != 1 {
 					t.Fatal("resolved without selection", err, resolves)
 				}
 				if explicit && lists != 0 {
@@ -100,5 +110,67 @@ func TestLegacyEndpointPackageSelection(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestPreferClientPackageIPs(t *testing.T) {
+	choices := []PackageChoice{
+		{ID: "local:a", Endpoint: "http://10.1.2.3:9180/a"},
+		{ID: "local:b", Endpoint: "http://10.1.2.3:9181/b"},
+		{ID: "remote:default", Endpoint: "http://10.1.2.4:9180"},
+	}
+	local := preferPackageIPs(choices, []net.IP{net.ParseIP("10.1.2.3")})
+	if len(local) != 2 || local[0].ID != "local:a" || local[1].ID != "local:b" {
+		t.Fatal(local)
+	}
+	if len(preferPackageIPs(choices, []net.IP{net.ParseIP("10.1.2.99")})) != 3 {
+		t.Fatal("remote candidates missing")
+	}
+	if len(packagesAtEndpointIP(choices, "http://10.1.2.3:9180/a")) != 2 {
+		t.Fatal("HTTP first-match ambiguity not detected")
+	}
+	ipv6 := []PackageChoice{{ID: "v6", Endpoint: "http://[2001:db8::1]:9180"}}
+	if len(preferPackageIPs(ipv6, []net.IP{net.ParseIP("2001:db8::1")})) != 1 {
+		t.Fatal("IPv6")
+	}
+}
+
+func TestLegacyIPResolution(t *testing.T) {
+	for _, sameIP := range []bool{false, true} {
+		t.Run(fmt.Sprint(sameIP), func(t *testing.T) {
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/auth/login/v1":
+					fmt.Fprint(w, `{"token":"test"}`)
+				case "/pack/v1":
+					other := "http://10.1.2.4:9180"
+					if sameIP {
+						other = "http://10.1.2.3:9181"
+					}
+					fmt.Fprintf(w, `{"summary":{"deployment":[{"deploy":[{"host":"local","name":"a","endpoint":"http://10.1.2.3:9180"},{"host":"other","name":"b","endpoint":%q}]}]}}`, other)
+				case "/juno/retrieve/v1":
+					calls++
+					if calls > 1 {
+						var q map[string]string
+						json.NewDecoder(r.Body).Decode(&q)
+						if q["package"] != "local:a" {
+							t.Error(q)
+						}
+					}
+					fmt.Fprint(w, `{"system":{"code":200},"endpoint":"http://10.1.2.3:9180"}`)
+				}
+			}))
+			defer server.Close()
+			flags := FatimaCmdFlags{JupiterUri: server.URL, Plain: true}
+			err := GetJunoEndpoint(&flags)
+			if sameIP {
+				if err == nil || calls != 1 || flags.Endpoint != "" {
+					t.Fatal("multiple local packages silently selected", err, calls)
+				}
+			} else if err != nil || calls != 2 || flags.UserPackage != "local:a" {
+				t.Fatal(err, calls, flags.UserPackage)
+			}
+		})
 	}
 }

@@ -14,9 +14,9 @@ Run `lcproc` in a terminal to choose a local process, inspect/switch revisions, 
 
 ## Package selection
 
-For `rostart`, `rostop`, `roproc`, `rocron`, `rolog`, `rohis`, `rodis`, `roclip`, and `roclric`, an explicit `-p host:package` selects that package. Without `-p`, one registered package is selected automatically; multiple packages require selection in a terminal. No registered packages produces guidance to check `ropack`.
+For `rostart`, `rostop`, `roproc`, `rocron`, `rolog`, `rohis`, `rodis`, `roclip`, and `roclric`, an explicit `-p host:package` selects that package. Without `-p`, Jupiter first resolves the package matching the client IP. A unique match is used automatically; multiple matching packages are offered for selection. If no IP matches, the only registered package is selected automatically, or the full package list is offered when several are registered. No registered packages produces guidance to check `ropack`.
 
-The same selection applies before reports such as `rocron -l`, `rohis PROCESS`, and direct `rolog PROCESS LEVEL` changes, as well as the legacy HTTP paths. Process/group/action arguments remain intact after selection. `--plain`, `--json` (where supported), and non-terminal execution never prompt: specify `-p` when multiple packages are registered.
+The same selection applies before reports such as `rocron -l`, `rohis PROCESS`, and direct `rolog PROCESS LEVEL` changes, as well as the legacy HTTP paths. Process/group/action arguments remain intact after selection. `--plain`, `--json` (where supported), and non-terminal execution never prompt: IP-based automatic selection still applies; specify `-p` only when the target remains ambiguous.
 
 `ropack` continues to show all packages, and `rodeploy` retains its deployment target selection flow.
 

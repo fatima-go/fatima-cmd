@@ -22,6 +22,7 @@ package share
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 )
@@ -32,16 +33,52 @@ func GetJunoEndpoint(flags *FatimaCmdFlags) error {
 		return fmt.Errorf("auth fail : %s\n", err.Error())
 	}
 
-	if flags.UserPackage == "" {
-		choices, err := legacyPackageChoices(*flags)
-		if err != nil {
-			return err
+	if flags.UserPackage != "" {
+		return retrieveJunoEndpoint(flags)
+	}
+	err = retrieveJunoEndpoint(flags)
+	if err != nil && !errors.Is(err, errPackageSelectionRequired) {
+		return err
+	}
+	choices, listErr := legacyPackageChoices(*flags)
+	if listErr != nil {
+		return listErr
+	}
+	if err == nil {
+		candidates := packagesAtEndpointIP(choices, flags.Endpoint)
+		if len(candidates) > 0 {
+			choices = candidates
+		} else {
+			// Hostname endpoints can still be identified exactly in the catalog.
+			var exact []PackageChoice
+			for _, p := range choices {
+				if p.Endpoint == flags.Endpoint {
+					exact = append(exact, p)
+				}
+			}
+			if len(exact) == 0 {
+				return fmt.Errorf("자동 선택된 패키지가 목록에 없습니다. 다시 시도하세요")
+			}
+			choices = exact
 		}
-		flags.UserPackage, err = ChoosePackage(choices, !flags.Plain && PackagePromptAvailable())
-		if err != nil {
-			return err
+	} else {
+		choices, listErr = PreferClientPackages(choices)
+		if listErr != nil {
+			return listErr
 		}
 	}
+	flags.Endpoint = ""
+	flags.UserPackage, err = ChoosePackage(choices, !flags.Plain && PackagePromptAvailable())
+	if err != nil {
+		return err
+	}
+	return retrieveJunoEndpoint(flags)
+}
+
+var errPackageSelectionRequired = errors.New("패키지 선택이 필요합니다")
+
+func retrieveJunoEndpoint(flags *FatimaCmdFlags) error {
+	var err error
 	url := flags.JupiterUri + v1EndpointResourceUrl
 
 	var b []byte
@@ -68,6 +105,9 @@ func GetJunoEndpoint(flags *FatimaCmdFlags) error {
 
 	if !isSuccess(respMap) {
 		message := GetSystemMessage(respMap)
+		if flags.UserPackage == "" && message == "there are many host(package) exist. you have to specify host:package with option -p" {
+			return errPackageSelectionRequired
+		}
 		return fmt.Errorf("%s", message)
 	}
 

@@ -3,6 +3,8 @@ package share
 import (
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -118,4 +120,65 @@ func legacyPackageChoices(flags FatimaCmdFlags) ([]PackageChoice, error) {
 		}
 	}
 	return choices, nil
+}
+
+// PreferClientPackages narrows ambiguous routing to this machine's addresses.
+// Wildcard/loopback endpoints are not proof of locality on a remote server.
+func PreferClientPackages(choices []PackageChoice) ([]PackageChoice, error) {
+	addresses, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil, fmt.Errorf("클라이언트 IP 확인 실패: %w", err)
+	}
+	var ips []net.IP
+	for _, address := range addresses {
+		ip, _, err := net.ParseCIDR(address.String())
+		if err == nil && !ip.IsLoopback() && !ip.IsUnspecified() {
+			ips = append(ips, ip)
+		}
+	}
+	return preferPackageIPs(choices, ips), nil
+}
+func preferPackageIPs(choices []PackageChoice, ips []net.IP) []PackageChoice {
+	var matches []PackageChoice
+	for _, p := range choices {
+		u, err := url.Parse(p.Endpoint)
+		if err != nil {
+			continue
+		}
+		ip := net.ParseIP(u.Hostname())
+		if ip == nil {
+			continue
+		}
+		for _, local := range ips {
+			if ip.Equal(local) {
+				matches = append(matches, p)
+				break
+			}
+		}
+	}
+	if len(matches) > 0 {
+		return matches
+	}
+	return choices
+}
+
+// An HTTP server may return the first package matching the peer IP. Keep all
+// packages on that IP as candidates instead of silently accepting the first.
+func packagesAtEndpointIP(choices []PackageChoice, endpoint string) []PackageChoice {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return nil
+	}
+	ip := net.ParseIP(u.Hostname())
+	if ip == nil {
+		return nil
+	}
+	var matches []PackageChoice
+	for _, p := range choices {
+		target, err := url.Parse(p.Endpoint)
+		if err == nil && ip.Equal(net.ParseIP(target.Hostname())) {
+			matches = append(matches, p)
+		}
+	}
+	return matches
 }

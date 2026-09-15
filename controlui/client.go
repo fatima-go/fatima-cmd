@@ -89,8 +89,9 @@ func Connect(ctx context.Context, cfg config.JupiterContextRecord, name string, 
 		c.Capabilities = caps
 		return c, nil
 	}
-	if opts.Package == "" {
-		packages, e := c.Packages(ctx)
+	c.Target, err = api.NewRoutingClient(c.gateway).Resolve(auth, &api.PackageQuery{PackageId: opts.Package})
+	if err != nil && opts.Package == "" && (status.Code(err) == codes.NotFound || status.Code(err) == codes.FailedPrecondition) {
+		packages, e := c.SelectionPackages(ctx)
 		if e != nil {
 			return nil, e
 		}
@@ -103,12 +104,12 @@ func Connect(ctx context.Context, cfg config.JupiterContextRecord, name string, 
 			c.Capabilities = caps
 			return c, nil
 		}
-		opts.Package = packages.Packages[0].Target.PackageId
+		c.Target, err = api.NewRoutingClient(c.gateway).Resolve(auth, &api.PackageQuery{PackageId: packages.Packages[0].Target.PackageId})
 	}
-	c.Target, err = api.NewRoutingClient(c.gateway).Resolve(auth, &api.PackageQuery{PackageId: opts.Package})
 	if err != nil {
 		return nil, err
 	}
+
 	caps, err = transport.Discover(ctx, c.Target.Endpoint)
 	if err != nil {
 		return nil, err

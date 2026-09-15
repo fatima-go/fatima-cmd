@@ -3,6 +3,7 @@ package controlui
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"testing"
 
@@ -12,6 +13,8 @@ import (
 	"github.com/fatima-go/fatima-cmd/config"
 	"github.com/fatima-go/fatima-opm/api"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type pickerInventory struct {
@@ -38,7 +41,7 @@ func TestControlPackagePickerRouting(t *testing.T) {
 					}
 					gateway := grpc.NewServer()
 					api.RegisterIdentityServer(gateway, &registryIdentity{})
-					api.RegisterRoutingServer(gateway, &registryRouting{endpoint: endpoint})
+					api.RegisterRoutingServer(gateway, &pickerRouting{registryRouting: registryRouting{endpoint: endpoint}, emptyCode: codes.NotFound})
 					api.RegisterPackageInventoryServer(gateway, inventory)
 					url := registryTestEndpoint(t, gateway, &api.Capabilities{Server: "jupiter", ApiVersion: 2, Features: []string{"routing"}})
 					password, _ := cipher.Aes256Encode("password")
@@ -147,7 +150,7 @@ func TestNonInteractivePackageSelection(t *testing.T) {
 			endpoint := registryTestEndpoint(t, backend, &api.Capabilities{Server: "juno", ApiVersion: 2, PackageId: "host:package", Features: []string{"rocron"}})
 			gateway := grpc.NewServer()
 			api.RegisterIdentityServer(gateway, &registryIdentity{})
-			api.RegisterRoutingServer(gateway, &registryRouting{endpoint: endpoint})
+			api.RegisterRoutingServer(gateway, &pickerRouting{registryRouting: registryRouting{endpoint: endpoint}, emptyCode: codes.NotFound})
 			api.RegisterPackageInventoryServer(gateway, inventory)
 			url := registryTestEndpoint(t, gateway, &api.Capabilities{Server: "jupiter", ApiVersion: 2, Features: []string{"routing"}})
 			password, _ := cipher.Aes256Encode("password")
@@ -174,5 +177,107 @@ func TestReopenedPackagePickerShowsOtherPackages(t *testing.T) {
 		if len(m.visiblePackages()) != 2 {
 			t.Fatal(command, "hid other packages")
 		}
+	}
+}
+
+type pickerRouting struct {
+	registryRouting
+	emptyCode codes.Code
+}
+
+func (r *pickerRouting) Resolve(ctx context.Context, q *api.PackageQuery) (*api.Target, error) {
+	if q.PackageId == "" && r.emptyCode != codes.OK {
+		return nil, status.Error(r.emptyCode, "routing test")
+	}
+	return r.registryRouting.Resolve(ctx, q)
+}
+
+func TestIPRoutingPrecedesPackagePicker(t *testing.T) {
+	for _, command := range []string{"roproc", "rostop", "rostart", "rocron", "rolog", "rohis"} {
+		for _, interactive := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/interactive=%t", command, interactive), func(t *testing.T) {
+				registry := &directRegistry{calls: map[string]int{}}
+				backend := grpc.NewServer()
+				api.RegisterProcessRegistryServer(backend, registry)
+				endpoint := registryTestEndpoint(t, backend, &api.Capabilities{Server: "juno", ApiVersion: 2, PackageId: "host:package", Features: []string{command}})
+				gateway := grpc.NewServer()
+				api.RegisterIdentityServer(gateway, &registryIdentity{})
+				api.RegisterRoutingServer(gateway, &pickerRouting{registryRouting: registryRouting{endpoint: endpoint}})
+				// No inventory service: successful peer-IP resolution must not need it.
+				url := registryTestEndpoint(t, gateway, &api.Capabilities{Server: "jupiter", ApiVersion: 2, Features: []string{"routing"}})
+				password, _ := cipher.Aes256Encode("password")
+				c, err := Connect(context.Background(), config.JupiterContextRecord{Jupiter: url, Password: password}, "test", Options{Command: command, pickPackage: interactive})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer c.Close()
+				if c.backend == nil || c.Target.PackageId != "host:package" {
+					t.Fatal("IP resolved target was not used")
+				}
+			})
+		}
+	}
+}
+
+func TestRoutingErrorsDoNotOpenPicker(t *testing.T) {
+	for _, code := range []codes.Code{codes.PermissionDenied, codes.Unauthenticated, codes.Unavailable} {
+		gateway := grpc.NewServer()
+		api.RegisterIdentityServer(gateway, &registryIdentity{})
+		api.RegisterRoutingServer(gateway, &pickerRouting{emptyCode: code})
+		url := registryTestEndpoint(t, gateway, &api.Capabilities{Server: "jupiter", ApiVersion: 2, Features: []string{"routing"}})
+		password, _ := cipher.Aes256Encode("password")
+		_, err := Connect(context.Background(), config.JupiterContextRecord{Jupiter: url, Password: password}, "test", Options{Command: "rocron", pickPackage: true})
+		if status.Code(err) != code {
+			t.Fatal(code, err)
+		}
+	}
+}
+
+func TestInitialPickerKeepsLocalCandidates(t *testing.T) {
+	addresses, err := net.InterfaceAddrs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var local net.IP
+	for _, a := range addresses {
+		ip, _, e := net.ParseCIDR(a.String())
+		if e == nil && !ip.IsLoopback() && !ip.IsUnspecified() {
+			local = ip
+			break
+		}
+	}
+	if local == nil {
+		t.Skip("no non-loopback interface")
+	}
+	gateway := grpc.NewServer()
+	api.RegisterIdentityServer(gateway, &registryIdentity{})
+	api.RegisterRoutingServer(gateway, &pickerRouting{emptyCode: codes.FailedPrecondition})
+	api.RegisterPackageInventoryServer(gateway, &pickerInventory{catalog: &api.PackageCatalog{Packages: []*api.PackageEntry{
+		{Target: &api.Target{PackageId: "local:a", Endpoint: "http://" + net.JoinHostPort(local.String(), "9180")}},
+		{Target: &api.Target{PackageId: "local:b", Endpoint: "http://" + net.JoinHostPort(local.String(), "9181")}},
+		{Target: &api.Target{PackageId: "remote:a", Endpoint: "http://192.0.2.254:9180"}},
+	}}})
+	url := registryTestEndpoint(t, gateway, &api.Capabilities{Server: "jupiter", ApiVersion: 2, Features: []string{"routing"}})
+	password, _ := cipher.Aes256Encode("password")
+	opts := Options{Command: "rocron", pickPackage: true}
+	c, err := Connect(context.Background(), config.JupiterContextRecord{Jupiter: url, Password: password}, "test", opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	m := model{ctx: context.Background(), client: c, opts: opts}
+	loaded := m.load()().(loaded)
+	if loaded.err != nil || len(loaded.packages.Packages) != 2 {
+		t.Fatal(loaded)
+	}
+	// The one-shot report path uses the same candidate method.
+	report, err := c.SelectionPackages(context.Background())
+	if err != nil || len(report.Packages) != 2 {
+		t.Fatal(report, err)
+	}
+	// Manually reopening a picker must not permanently hide remote packages.
+	all, err := c.Packages(context.Background())
+	if err != nil || len(all.Packages) != 3 {
+		t.Fatal(all, err)
 	}
 }

@@ -112,7 +112,13 @@ func (m model) packageChoices() tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 		defer cancel()
-		c, err := m.client.Packages(ctx)
+		var c *api.PackageCatalog
+		var err error
+		if m.client.backend == nil {
+			c, err = m.client.SelectionPackages(ctx)
+		} else {
+			c, err = m.client.Packages(ctx)
+		}
 		return loaded{packages: c, err: err}
 	}
 }

@@ -168,3 +168,27 @@ func packageChoices(catalog *api.PackageCatalog) []share.PackageChoice {
 	}
 	return choices
 }
+
+// SelectionPackages narrows initial routing ambiguity to packages on this client.
+// Explicitly reopening the package picker still uses the entire catalog.
+func (c *Client) SelectionPackages(ctx context.Context) (*api.PackageCatalog, error) {
+	catalog, err := c.Packages(ctx)
+	if err != nil {
+		return nil, err
+	}
+	preferred, err := share.PreferClientPackages(packageChoices(catalog))
+	if err != nil {
+		return nil, err
+	}
+	ids := map[string]bool{}
+	for _, p := range preferred {
+		ids[p.ID] = true
+	}
+	filtered := &api.PackageCatalog{ObservedAt: catalog.ObservedAt}
+	for _, p := range catalog.Packages {
+		if p != nil && p.Target != nil && ids[p.Target.PackageId] {
+			filtered.Packages = append(filtered.Packages, p)
+		}
+	}
+	return filtered, nil
+}

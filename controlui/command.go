@@ -93,7 +93,7 @@ func Main(command string, legacyMain func()) (resultErr error) {
 	}
 	if c.backend == nil && opts.pickPackage {
 		query, cancel := context.WithTimeout(ctx, 10*time.Second)
-		catalog, listErr := c.Packages(query)
+		catalog, listErr := c.SelectionPackages(query)
 		cancel()
 		c.Close()
 		if listErr != nil {
