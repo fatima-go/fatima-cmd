@@ -22,6 +22,8 @@ package main
 
 import (
 	"fmt"
+	tea "github.com/charmbracelet/bubbletea"
+	"golang.org/x/term"
 	"os"
 	"strings"
 )
@@ -49,6 +51,29 @@ var mode string
 var turnOn bool
 
 func main() {
+	args := os.Args[1:]
+	plain := false
+	if len(args) > 0 && args[0] == "--plain" {
+		plain = true
+		args = args[1:]
+		os.Args = append([]string{os.Args[0]}, args...)
+	}
+	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
+		fmt.Printf(usage, os.Args[0])
+		fmt.Println("\n인자 없이 실행하면 TUI로 안내합니다. --plain: 기존 텍스트 방식")
+		return
+	}
+	if !plain && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
+		if _, err := tea.NewProgram(newLocalModel(args), tea.WithAltScreen()).Run(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	legacyMain()
+}
+
+func legacyMain() {
 	if len(os.Args) < 3 {
 		fmt.Printf(string(usage), os.Args[0])
 		return
