@@ -5,7 +5,7 @@ import (
 	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fatima-go/fatima-cmd/share"
-	"github.com/fatima-go/fatima-core/opm/api"
+	"github.com/fatima-go/fatima-opm/api"
 	"google.golang.org/grpc"
 	"sort"
 	"strings"

@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/fatima-go/fatima-core/opm/api"
+	"github.com/fatima-go/fatima-opm/api"
 )
 
 var (

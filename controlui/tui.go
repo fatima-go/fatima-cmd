@@ -6,9 +6,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/fatima-go/fatima-core/opm/api"
-	"github.com/fatima-go/fatima-core/opm/operations"
-	"github.com/fatima-go/fatima-core/opm/transport"
+	"github.com/fatima-go/fatima-cmd/share"
+	"github.com/fatima-go/fatima-opm/api"
+	"github.com/fatima-go/fatima-opm/operations"
+	"github.com/fatima-go/fatima-opm/transport"
 	"google.golang.org/grpc"
 	"io"
 	"strings"
@@ -137,6 +138,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = v.Width
 		m.height = v.Height
 	case connected:
+		v.err = share.UnsupportedRPC(v.err, "Jupiter 또는 대상 Juno")
 		m.busy = false
 		if legacy(v.err) {
 			m.fallback = true
@@ -158,6 +160,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.load()
 	case loaded:
+		v.err = share.UnsupportedRPC(v.err, "Jupiter 또는 대상 Juno")
 		m.busy = false
 		if v.err != nil {
 			m.err = v.err

@@ -7,9 +7,10 @@ import (
 	"flag"
 	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/fatima-go/fatima-core/opm/api"
-	"github.com/fatima-go/fatima-core/opm/operations"
-	"github.com/fatima-go/fatima-core/opm/transport"
+	"github.com/fatima-go/fatima-cmd/share"
+	"github.com/fatima-go/fatima-opm/api"
+	"github.com/fatima-go/fatima-opm/operations"
+	"github.com/fatima-go/fatima-opm/transport"
 	"golang.org/x/term"
 	"os"
 	"strconv"
@@ -31,7 +32,8 @@ type Options struct {
 	pickPackage                                                   bool // interactive commands can select a package
 }
 
-func Main(command string, legacyMain func()) error {
+func Main(command string, legacyMain func()) (resultErr error) {
+	defer func() { resultErr = share.UnsupportedRPC(resultErr, "Jupiter 또는 대상 Juno") }()
 	for i, a := range os.Args[1:] {
 		if a == "--legacy" {
 			os.Args = append(os.Args[:i+1], os.Args[i+2:]...)

@@ -14,8 +14,8 @@ import (
 
 	"github.com/fatima-go/fatima-cmd/config"
 	"github.com/fatima-go/fatima-cmd/deployui"
-	"github.com/fatima-go/fatima-core/opm/api"
-	"github.com/fatima-go/fatima-core/opm/transport"
+	"github.com/fatima-go/fatima-opm/api"
+	"github.com/fatima-go/fatima-opm/transport"
 	juno "github.com/fatima-go/juno/deployment"
 	jupiter "github.com/fatima-go/jupiter/deployment"
 	"google.golang.org/grpc"

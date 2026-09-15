@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/fatima-go/fatima-cmd/cipher"
 	"github.com/fatima-go/fatima-cmd/config"
-	"github.com/fatima-go/fatima-core/opm/api"
+	"github.com/fatima-go/fatima-opm/api"
 	"google.golang.org/grpc"
 )
 

@@ -6,7 +6,8 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/ansi v0.10.1
-	github.com/fatima-go/fatima-core v1.3.7
+	github.com/fatima-go/fatima-core/v2 v2.0.0
+	github.com/fatima-go/fatima-opm v1.0.0
 	github.com/jedib0t/go-pretty/v6 v6.7.10
 	github.com/olekukonko/tablewriter v1.1.4
 	github.com/pkg/errors v0.9.1

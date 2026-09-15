@@ -3,18 +3,20 @@ package deployui
 import (
 	"context"
 	"fmt"
-	"github.com/fatima-go/fatima-core/opm/lifecycle"
+	"github.com/fatima-go/fatima-cmd/share"
+	"github.com/fatima-go/fatima-opm/lifecycle"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/fatima-go/fatima-core/opm/api"
+	"github.com/fatima-go/fatima-opm/api"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
-func RunJSON(c *Client, o Options) error {
+func RunJSON(c *Client, o Options) (resultErr error) {
+	defer func() { resultErr = share.UnsupportedRPC(resultErr, "Jupiter 또는 대상 Juno") }()
 	parent, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	ctx, cancel := context.WithTimeout(parent, 30*time.Minute)

@@ -3,6 +3,7 @@ package deployui
 import (
 	"context"
 	"fmt"
+	"github.com/fatima-go/fatima-cmd/share"
 	"io"
 	"os"
 	"os/exec"
@@ -14,9 +15,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/fatima-go/fatima-cmd/config"
-	"github.com/fatima-go/fatima-core/opm/api"
-	"github.com/fatima-go/fatima-core/opm/lifecycle"
-	"github.com/fatima-go/fatima-core/opm/transport"
+	"github.com/fatima-go/fatima-opm/api"
+	"github.com/fatima-go/fatima-opm/lifecycle"
+	"github.com/fatima-go/fatima-opm/transport"
 	"golang.org/x/term"
 )
 
@@ -236,6 +237,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pulse:
 		return m, tick()
 	case event:
+		v.err = share.UnsupportedRPC(v.err, "Jupiter 또는 대상 Juno")
 		if v.kind == "connected" {
 			m.booting, m.busy = false, false
 			m.connection = v.value.(connectionResult)

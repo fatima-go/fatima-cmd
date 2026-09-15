@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/fatima-go/fatima-cmd/config"
-	"github.com/fatima-go/fatima-core/crypt"
-	"github.com/fatima-go/fatima-core/opm/api"
-	"github.com/fatima-go/fatima-core/opm/transport"
+	"github.com/fatima-go/fatima-core/v2/crypt"
+	"github.com/fatima-go/fatima-opm/api"
+	"github.com/fatima-go/fatima-opm/transport"
 	"google.golang.org/grpc"
 )
 

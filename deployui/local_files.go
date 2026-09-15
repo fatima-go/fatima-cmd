@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fatima-go/fatima-core/opm/artifact"
+	"github.com/fatima-go/fatima-opm/artifact"
 )
 
 type localFAR struct {

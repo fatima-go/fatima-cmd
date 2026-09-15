@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/fatima-go/fatima-cmd/config"
-	"github.com/fatima-go/fatima-core/opm/api"
+	"github.com/fatima-go/fatima-opm/api"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

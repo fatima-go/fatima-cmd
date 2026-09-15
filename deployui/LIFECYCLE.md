@@ -35,7 +35,7 @@ commands alone are observers and do not acquire ownership.
 
 ## Build and verification
 
-Juno, Jupiter and fatima-cmd use the released fatima-core v1.3.7 module without
+Juno, Jupiter and fatima-cmd use the released fatima-core/v2 v2.0.0 and fatima-opm v1.0.0 modules without
 a local replace. Standalone builds do not require a sibling fatima-core checkout.
 
 From fatima-cmd:
@@ -45,7 +45,7 @@ From fatima-cmd:
     go test ./...
 
 The nested integration module uses sibling jupiter, juno and this CLI, together
-with the released fatima-core v1.3.7 module. It starts real TCP/gRPC servers, uploads a valid test FAR, validates scoped
+with the released fatima-core/v2 v2.0.0 and fatima-opm v1.0.0 modules. It starts real TCP/gRPC servers, uploads a valid test FAR, validates scoped
 Jupiter tickets in Juno and checks owner/observer exit, partial success/failure,
 no subsequent target execution and starting a new rollout after cleanup. Test
 executors do not touch production programs.

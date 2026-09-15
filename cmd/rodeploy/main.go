@@ -10,7 +10,7 @@ import (
 
 	"github.com/fatima-go/fatima-cmd/config"
 	"github.com/fatima-go/fatima-cmd/deployui"
-	"github.com/fatima-go/fatima-core/opm/transport"
+	"github.com/fatima-go/fatima-opm/transport"
 	"golang.org/x/term"
 )
 

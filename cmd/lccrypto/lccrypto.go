@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/fatima-go/fatima-core/crypt"
+	"github.com/fatima-go/fatima-core/v2/crypt"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
