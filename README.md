@@ -21,3 +21,7 @@ The same selection applies before reports such as `rocron -l`, `rohis PROCESS`, 
 `ropack` continues to show all packages, and `rodeploy` retains its deployment target selection flow.
 
 `lcproc` treats selecting the currently linked revision as an informational no-op, without requesting a stop or rewriting the link. This also applies to revision arguments and `--plain`.
+
+## rodeploy startup
+
+`rodeploy` and `rodeploy FILE.far` start on Upload. Existing deployment history is checked in the background and shown as a count with an `l` shortcut, without switching screens or blocking FAR selection. Use `u` for Upload, `a` for uploaded artifacts, and `l` for existing deployments. The left column shows deployment progress; Tab switches list/detail focus. Explicit `rodeploy rollouts` and `rodeploy watch ID` still open their requested views.

@@ -202,3 +202,15 @@ func targetCountdown(p *api.Rollout, now time.Time) string {
 	}
 	return ""
 }
+
+// Startup history is informational and never blocks preparing a new FAR.
+func (m *model) checkStartupRollouts() tea.Cmd {
+	m.startupNotice = "기존 배포 확인 중 · l 목록 보기"
+	client, parent := m.client, m.ctx
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+		defer cancel()
+		list, err := client.Rollouts(ctx)
+		return event{kind: "startup-rollouts", value: list, err: err}
+	}
+}

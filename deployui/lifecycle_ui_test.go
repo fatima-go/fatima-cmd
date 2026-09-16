@@ -83,7 +83,7 @@ func TestRejectedSubmissionDoesNotClaimAcceptance(t *testing.T) {
 		t.Fatal("network uncertainty lost")
 	}
 }
-func TestStartupShowsExistingWorkWithoutCommandKnowledge(t *testing.T) {
+func TestActivityScreenOffersNewDeployment(t *testing.T) {
 	m := layoutModel()
 	m.Update(event{kind: "recent", value: &api.RolloutList{Rollouts: m.rollouts}})
 	if m.view != "activity" || m.cursor != 1 {

@@ -32,6 +32,9 @@ func TestCommonFrameFitsAllScreensAndTerminalSizes(t *testing.T) {
 			for _, size := range [][2]int{{60, 19}, {80, 24}, {100, 32}, {132, 42}} {
 				m := layoutModel()
 				m.view, m.width, m.height = view, size[0], size[1]
+				if view == "upload" {
+					m.startupNotice = "기존 배포 12건 · 미종료 2건 · l 목록 보기"
+				}
 				if view == "connection" {
 					m.connection.failure = &connectionFailure{Code: "AUTH_FAILED", Message: "Jupiter 인증에 실패했습니다."}
 				} else if view == "confirm" {
@@ -47,7 +50,7 @@ func TestCommonFrameFitsAllScreensAndTerminalSizes(t *testing.T) {
 						t.Fatalf("%v: line wrapped unexpectedly: %s", size, line)
 					}
 				}
-				if !strings.Contains(output, "DEPLOY FLOW") || !strings.Contains(output, "127.0.0.1:9190") || !strings.Contains(strings.Join(lines[len(lines)-2:], "\n"), "q ") {
+				if !strings.Contains(output, "배포 진행 단계") || !strings.Contains(output, "127.0.0.1:9190") || !strings.Contains(strings.Join(lines[len(lines)-2:], "\n"), "q ") {
 					t.Fatalf("%v: shared frame or exit help missing", size)
 				}
 				if view != "connection" && strings.Contains(output, "Connection") {

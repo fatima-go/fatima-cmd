@@ -172,7 +172,7 @@ func (m *model) legacyHeading() string {
 
 func (m *model) rail(width, height int) []string {
 	n := m.stage()
-	lines := []string{mutedStyle.Render("DEPLOY FLOW"), ""}
+	lines := []string{mutedStyle.Render("배포 진행 단계"), ""}
 	if n == -2 {
 		lines = append(lines, activeStyle.Render(fit("▶ Connection", width)), "")
 	}
@@ -328,6 +328,9 @@ func (m *model) renderBody(width, height int) []string {
 	}
 	c := m.screen(width - 4)
 	top := []string{fit(titleStyle.Render(c.title), width), fit(mutedStyle.Render(c.description), width)}
+	if m.view == "upload" && m.startupNotice != "" {
+		top = append(top, fit(alertStyle.Render(m.startupNotice), width))
+	}
 	available := height - len(top)
 	if c.rows == nil && c.rowHeader == "" {
 		details := wrapLines(c.details, width-4)

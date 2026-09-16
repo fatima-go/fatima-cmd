@@ -58,6 +58,7 @@ type model struct {
 	connection                    connectionResult
 	booting                       bool
 	initialView                   string
+	startupNotice                 string
 	diagnostics, showIdentity     bool
 	focusDetail, editingPath      bool
 	previousInput                 string
@@ -258,12 +259,29 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			switch m.view {
 			case "upload":
-				return m, m.recentRollouts()
+				return m, tea.Batch(m.localScan(), m.checkStartupRollouts())
 			case "watch":
 				return m, m.task("watch", func(ctx context.Context) (any, error) { return m.client.Get(ctx, m.opts.Value) })
 			default:
 				return m, m.load()
 			}
+		}
+		if v.kind == "startup-rollouts" {
+			if v.err != nil {
+				m.startupNotice = "기존 배포 조회 실패 · l 목록에서 재확인"
+			} else {
+				rollouts := v.value.(*api.RolloutList).Rollouts
+				active := 0
+				for _, rollout := range rollouts {
+					if !lifecycle.Terminal(rollout.State) {
+						active++
+					}
+				}
+				m.startupNotice = fmt.Sprintf("기존 배포 %d건 · 미종료 %d건 · l 목록 보기", len(rollouts), active)
+			}
+			// This background result must not change navigation, upload progress,
+			// or another request's busy/error state.
+			return m, nil
 		}
 		if v.kind == "preview" {
 			if v.id != m.input || m.editingPath || (m.view != "upload" && m.view != "legacy") {

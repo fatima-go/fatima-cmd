@@ -41,7 +41,7 @@ func runV2() error {
 	fs.StringVar(&opts.Action, "action", "", "continue, resume, retry, cancel")
 	fs.Uint64Var(&opts.Revision, "revision", 0, "reviewed rollout revision for action")
 	fs.Usage = func() {
-		fmt.Fprintln(fs.Output(), "rodeploy [flags] [upload FAR | artifacts | rollouts | watch ID | create | act ID]\nNo arguments shows existing deployments when available, otherwise the upload screen; press a there to deploy an already uploaded artifact. A bare FAR path preselects it on the upload screen.\nJSON create streams snapshots and stays connected until completion (exit cancels unstarted targets).\n--legacy [original flags] FAR runs the unchanged HTTP command.")
+		fmt.Fprintln(fs.Output(), "rodeploy [flags] [upload FAR | artifacts | rollouts | watch ID | create | act ID]\nStarts on Upload even when deployment history exists. Press l to view existing deployments or a to use an already uploaded artifact. A bare FAR path preselects it on the upload screen.\nJSON create streams snapshots and stays connected until completion (exit cancels unstarted targets).\n--legacy [original flags] FAR runs the unchanged HTTP command.")
 		fs.PrintDefaults()
 	}
 	if e := fs.Parse(os.Args[1:]); e != nil {
