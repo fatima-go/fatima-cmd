@@ -116,6 +116,77 @@ func TestControlPackagePickerPreservesActionAndProcessGroup(t *testing.T) {
 	}
 }
 
+func pickerSheetFixture(count int) model {
+	m := model{ctx: context.Background(), opts: Options{Command: "rodis", pickPackage: true}, stage: "package",
+		width: 132, height: 30, client: &Client{Target: &api.Target{PackageId: "패키지 선택"}}, packages: &api.PackageCatalog{}}
+	for i := 0; i < count; i++ {
+		m.packages.Packages = append(m.packages.Packages, &api.PackageEntry{
+			Target: &api.Target{PackageId: fmt.Sprintf("be%02d.prod:default", i), Group: "backend",
+				Endpoint: fmt.Sprintf("http://10.180.37.%d:9180/XFOuLgmw/", i+1), Platform: "linux_amd64"},
+			State: "ALIVE", Transport: "gRPC",
+		})
+	}
+	m.packages.Packages = append(m.packages.Packages, &api.PackageEntry{
+		Target: &api.Target{PackageId: "evt01.prod:default", Group: "event", Endpoint: "http://10.180.36.239:9180/DlTsUlcg/"},
+		State:  "UNREACHABLE",
+	})
+	return m
+}
+
+// The in-TUI picker shares its columns with the standalone one, so the same
+// row numbers, host column and state vocabulary have to show up here.
+func TestControlPackagePickerSheetAndQuickSelect(t *testing.T) {
+	m := pickerSheetFixture(11)
+	wide := ansi.Strip(m.View())
+	if !strings.Contains(wide, "HOST") || !strings.Contains(wide, "10.180.37.1:9180") || strings.Contains(wide, "XFOuLgmw") {
+		t.Fatal(wide)
+	}
+	if !strings.Contains(wide, "UNREACHABLE") || !strings.Contains(wide, "│ 9 │") || !strings.Contains(wide, "│ · │") {
+		t.Fatal(wide)
+	}
+	m.width = 80
+	if narrow := ansi.Strip(m.View()); strings.Contains(narrow, "HOST") || !strings.Contains(narrow, "GROUP") {
+		t.Fatal(narrow)
+	}
+	m.width = 132
+	for _, size := range [][2]int{{60, 19}, {80, 24}, {100, 30}, {132, 42}} {
+		m.width, m.height = size[0], size[1]
+		for _, cursor := range []int{0, 5, 11} {
+			m.cursor = cursor
+			view := m.View()
+			if len(strings.Split(view, "\n")) > m.height {
+				t.Fatalf("height overflow %dx%d", m.width, m.height)
+			}
+			for _, row := range strings.Split(view, "\n") {
+				if ansi.StringWidth(row) > m.width {
+					t.Fatalf("width overflow %dx%d: %q", m.width, m.height, row)
+				}
+			}
+		}
+	}
+	m.width, m.height, m.cursor = 132, 30, 0
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
+	if cmd == nil || next.(model).opts.Package != "be01.prod:default" || !next.(model).busy {
+		t.Fatal(next.(model).opts.Package)
+	}
+	filtered := pickerSheetFixture(11)
+	filtered.filter = "evt"
+	if out, cmd := filtered.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")}); cmd != nil || out.(model).opts.Package != "" {
+		t.Fatal("digit beyond the filtered list selected a package")
+	}
+	if out, cmd := filtered.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1")}); cmd == nil || out.(model).opts.Package != "evt01.prod:default" {
+		t.Fatal(out.(model).opts.Package)
+	}
+	filtered.filter = "없는패키지"
+	view := ansi.Strip(filtered.View())
+	if !strings.Contains(view, "조건에 맞는 패키지가 없습니다") {
+		t.Fatal(view)
+	}
+	if out, cmd := filtered.Update(tea.KeyMsg{Type: tea.KeyEnter}); cmd != nil || out.(model).opts.Package != "" {
+		t.Fatal("selected from an empty list")
+	}
+}
+
 func TestPackagePromptModeParsing(t *testing.T) {
 	for _, tc := range []struct {
 		command string

@@ -217,7 +217,7 @@ func (m model) recordsPane(width, height int) string {
 	inner := width - 13 // four columns with cell padding and borders
 	timeWidth, commitWidth := 18, 8
 	userWidth := min(12, max(6, inner/5))
-	columns := []sheetColumn{{"DEPLOYED", timeWidth}, {"USER", userWidth}, {"BRANCH", max(4, inner-timeWidth-commitWidth-userWidth)}, {"COMMIT", commitWidth}}
+	columns := []sheetColumn{{Name: "DEPLOYED", Width: timeWidth}, {Name: "USER", Width: userWidth}, {Name: "BRANCH", Width: max(4, inner-timeWidth-commitWidth-userWidth)}, {Name: "COMMIT", Width: commitWidth}}
 	var rows [][]string
 	for i, r := range p.records {
 		mark := "  "

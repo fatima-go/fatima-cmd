@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/fatima-go/fatima-cmd/domain"
 	"golang.org/x/term"
 )
@@ -54,47 +53,197 @@ type packagePicker struct {
 	choices               []PackageChoice
 	cursor, width, height int
 	selected              string
+	filter                string
+	filtering             bool
 }
 
 func (m packagePicker) Init() tea.Cmd { return nil }
+
+// visible applies the incremental filter. Endpoint text is searchable so an
+// operator can narrow by server address as well as by package name.
+func (m packagePicker) visible() []PackageChoice {
+	if m.filter == "" {
+		return m.choices
+	}
+	needle := strings.ToLower(m.filter)
+	var out []PackageChoice
+	for _, p := range m.choices {
+		if strings.Contains(strings.ToLower(p.ID+" "+p.Group+" "+p.Endpoint+" "+p.State), needle) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func (m packagePicker) clamp() packagePicker {
+	rows := len(m.visible())
+	if m.cursor >= rows {
+		m.cursor = max(0, rows-1)
+	}
+	return m
+}
+
 func (m packagePicker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch v := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = v.Width, v.Height
 	case tea.KeyMsg:
-		switch v.String() {
+		if m.filtering {
+			return m.editFilter(v)
+		}
+		key := v.String()
+		switch key {
 		case "q", "esc", "ctrl+c":
 			return m, tea.Quit
 		case "up", "k":
 			m.cursor = max(0, m.cursor-1)
 		case "down", "j":
-			m.cursor = min(len(m.choices)-1, m.cursor+1)
+			m.cursor = min(max(0, len(m.visible())-1), m.cursor+1)
+		case "/":
+			m.filtering = true
 		case "enter":
-			if len(m.choices) > 0 {
-				m.selected = m.choices[m.cursor].ID
-				return m, tea.Quit
+			return m.choose(m.cursor)
+		default:
+			// Digits jump straight to a numbered row; the list is short enough
+			// that 1-9 covers most endpoints without any cursor movement.
+			if len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
+				return m.choose(int(key[0] - '1'))
 			}
 		}
 	}
-	return m, nil
+	return m.clamp(), nil
 }
-func (m packagePicker) View() string {
-	lines := []string{"패키지 선택", "작업할 패키지를 선택하세요.", ""}
-	room := max(1, m.height-6)
-	start := max(0, m.cursor-room+1)
-	for i := start; i < min(len(m.choices), start+room); i++ {
-		p := m.choices[i]
-		marker := "  "
-		if i == m.cursor {
-			marker = "▶ "
+
+func (m packagePicker) choose(index int) (tea.Model, tea.Cmd) {
+	rows := m.visible()
+	if index < 0 || index >= len(rows) {
+		return m.clamp(), nil
+	}
+	m.cursor = index
+	m.selected = rows[index].ID
+	return m, tea.Quit
+}
+
+// editFilter keeps Enter on the filter, matching the inventory screens where
+// Enter applies the typed text and a second Enter acts on the selected row.
+func (m packagePicker) editFilter(v tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch v.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc":
+		m.filtering, m.filter, m.cursor = false, "", 0
+	case "enter":
+		m.filtering = false
+	case "backspace":
+		r := []rune(m.filter)
+		if len(r) > 0 {
+			m.filter = string(r[:len(r)-1])
 		}
-		lines = append(lines, marker+p.ID+"  "+p.Group+"  "+p.Endpoint+"  "+p.State)
+		m.cursor = 0
+	case "up":
+		m.cursor = max(0, m.cursor-1)
+	case "down":
+		m.cursor = min(max(0, len(m.visible())-1), m.cursor+1)
+	default:
+		if v.Type == tea.KeyRunes {
+			m.filter += string(v.Runes)
+			m.cursor = 0
+		}
 	}
-	lines = append(lines, "", "↑↓ 이동 · Enter 선택 · Esc/q 취소")
-	for i, line := range lines {
-		lines[i] = ansi.Truncate(strings.ReplaceAll(ansi.Strip(line), "\n", " "), max(1, m.width-2), "…")
+	return m.clamp(), nil
+}
+
+// Jupiter's legacy package list abbreviates the state to a single letter while
+// the gRPC inventory sends the whole word. One vocabulary keeps the column
+// readable and lets the shared renderer color it.
+func PackageStateLabel(state string) string {
+	switch state = strings.ToUpper(strings.TrimSpace(state)); state {
+	case "A":
+		return "ALIVE"
+	case "D":
+		return "DEAD"
+	case "":
+		return "UNKNOWN"
 	}
-	return strings.Join(lines, "\n")
+	return state
+}
+
+// PackageHost drops the random juno path token, which never helps a choice.
+func PackageHost(endpoint string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Host == "" {
+		return endpoint
+	}
+	return u.Host
+}
+
+// PackagePickerColumns spends the terminal width on the columns that
+// distinguish the candidates, and drops HOST first when the window cannot hold
+// it. Both pickers - standalone and in-TUI - lay out through this.
+func PackagePickerColumns(width int) []SheetColumn {
+	if width >= 88 {
+		inner := width - 16 // five columns with cell padding and borders
+		state := min(11, max(7, inner/5))
+		group := min(14, max(7, inner/5))
+		host := min(22, max(12, inner/3))
+		return []SheetColumn{{Name: "#", Width: 1}, {Name: "PACKAGE", Width: inner - 1 - group - host - state}, {Name: "GROUP", Width: group}, {Name: "HOST", Width: host}, {Name: "STATE", Width: state}}
+	}
+	inner := width - 13 // four columns with cell padding and borders
+	state := min(11, max(7, inner/5))
+	group := min(14, max(7, inner/5))
+	return []SheetColumn{{Name: "#", Width: 1}, {Name: "PACKAGE", Width: inner - 1 - group - state}, {Name: "GROUP", Width: group}, {Name: "STATE", Width: state}}
+}
+
+// PackageRow renders one candidate for a table built from
+// PackagePickerColumns, so the two package pickers cannot drift apart.
+func PackageRow(columns []SheetColumn, index, cursor int, p PackageChoice) []string {
+	mark := "  "
+	if index == cursor {
+		mark = "▶ "
+	}
+	number := "·" // only the numbered rows answer a digit key
+	if index < 9 {
+		number = fmt.Sprint(index + 1)
+	}
+	row := []string{number, mark + p.ID, p.Group}
+	if len(columns) == 5 {
+		row = append(row, PackageHost(p.Endpoint))
+	}
+	return append(row, PackageStateLabel(p.State))
+}
+
+func (m packagePicker) View() string {
+	if m.width < 60 || m.height < 12 {
+		return "터미널을 60열 × 12행 이상으로 늘려 주세요. q 취소"
+	}
+	width := m.width - 2
+	columns := PackagePickerColumns(width)
+	wide := len(columns) == 5
+	rows := m.visible()
+	cells := make([][]string, 0, len(rows))
+	for i, p := range rows {
+		cells = append(cells, PackageRow(columns, i, m.cursor, p))
+	}
+	title := fmt.Sprintf("패키지 선택 · %d개", len(m.choices))
+	cursor := m.cursor
+	if m.filter != "" {
+		title = fmt.Sprintf("패키지 선택 · %d / %d개 · 필터 %q", len(rows), len(m.choices), m.filter)
+	}
+	if len(cells) == 0 {
+		cells, cursor = [][]string{{"", "조건에 맞는 패키지가 없습니다"}}, -1
+	}
+	footer := "↑↓ 이동 · Enter 선택 · 1-9 바로 선택 · / 필터 · Esc 취소"
+	if !wide {
+		footer = "↑↓ · Enter 선택 · 1-9 · / 필터 · Esc"
+	}
+	head := SheetBorder.Render("작업할 패키지를 선택하세요.")
+	if m.filtering {
+		head, footer = SheetHeading.Render("필터> ")+m.filter+"█", "Enter 필터 적용 · Esc 필터 해제"
+	}
+	// A short list keeps a short table: padding it out to the window would only
+	// add empty striped rows under the candidates.
+	height := min(m.height-1, len(cells)+6)
+	return head + "\n" + SheetView(title, columns, cells, cursor, width, height, true, footer)
 }
 
 func legacyPackageChoices(flags FatimaCmdFlags) ([]PackageChoice, error) {

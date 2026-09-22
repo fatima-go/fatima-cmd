@@ -232,42 +232,56 @@ func (m model) choosePackage(key string) (tea.Model, tea.Cmd) {
 			return m, m.load()
 		}
 	case "enter":
-		rows := m.visiblePackages()
-		if len(rows) == 0 {
-			return m, nil
-		}
-		m.opts.Package = rows[min(m.cursor, len(rows)-1)].Target.PackageId
-		m.client.Close()
-		m.client, m.packages, m.filter, m.cursor, m.err = nil, nil, "", 0, nil
-		m.status = "접속 확인 중"
-		m.busy = true
-		return m, m.connect()
+		return m.selectPackage(m.cursor)
 	default:
+		// Digits answer the numbers the picker prints, as in the standalone one.
+		if len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
+			return m.selectPackage(int(key[0] - '1'))
+		}
 		return m.moveCursor(key), nil
 	}
 	return m, nil
 }
+
+func (m model) selectPackage(index int) (tea.Model, tea.Cmd) {
+	rows := m.visiblePackages()
+	if index < 0 || index >= len(rows) {
+		return m, nil
+	}
+	m.opts.Package = rows[index].Target.PackageId
+	m.client.Close()
+	m.client, m.packages, m.filter, m.cursor, m.err = nil, nil, "", 0, nil
+	m.status = "접속 확인 중"
+	m.busy = true
+	return m, m.connect()
+}
 func (m model) packagePickerView(width, height int) string {
-	title := "패키지 선택"
+	rows := m.visiblePackages()
+	columns := share.PackagePickerColumns(width)
+	cells := make([][]string, 0, len(rows))
+	for i, p := range rows {
+		cells = append(cells, share.PackageRow(columns, i, m.cursor, packageChoice(p)))
+	}
+	title := fmt.Sprintf("패키지 선택 · %d개", len(rows))
 	if m.filter != "" {
-		title += " · " + m.filter
+		title = fmt.Sprintf("패키지 선택 · %d / %d개 · 필터 %q", len(rows), len(m.packages.GetPackages()), m.filter)
 	}
-	var rows [][]string
-	for i, p := range m.visiblePackages() {
-		mark := "  "
-		if i == m.cursor {
-			mark = "▶ "
-		}
-		rows = append(rows, []string{mark + p.Target.PackageId, p.Target.Group, p.State})
+	cursor := m.cursor
+	if len(cells) == 0 {
+		cells, cursor = [][]string{{"", "조건에 맞는 패키지가 없습니다"}}, -1
 	}
-	return sheetView(title, threeColumns("PACKAGE", "STATE", width), rows, m.cursor, width, height, true, "Enter 선택")
+	footer := "↑↓ 이동 · Enter 선택 · 1-9 바로 선택 · / 필터"
+	if len(columns) < 5 {
+		footer = "↑↓ · Enter 선택 · 1-9 · / 필터"
+	}
+	return sheetView(title, columns, cells, cursor, width, height, true, footer)
 }
 
 func threeColumns(name, last string, width int) []sheetColumn {
 	inner := width - 10 // three columns with cell padding and borders
 	groupWidth := min(14, max(7, inner/4))
 	lastWidth := min(11, max(7, inner/4))
-	return []sheetColumn{{name, inner - groupWidth - lastWidth}, {"GROUP", groupWidth}, {last, lastWidth}}
+	return []sheetColumn{{Name: name, Width: inner - groupWidth - lastWidth}, {Name: "GROUP", Width: groupWidth}, {Name: last, Width: lastWidth}}
 }
 func (m model) logLevelView(width, height int) string {
 	suffix := ""
@@ -336,5 +350,5 @@ func (m model) levelPicker(entries []*api.LogLevelEntry, width, height int) stri
 	}
 	inner := width - 7 // two columns with cell padding and borders
 	noteWidth := min(8, max(4, inner/3))
-	return sheetView(title, []sheetColumn{{"LEVEL", inner - noteWidth}, {"", noteWidth}}, rows, cursor, width, height, m.stage == "level", footer)
+	return sheetView(title, []sheetColumn{{Name: "LEVEL", Width: inner - noteWidth}, {Width: noteWidth}}, rows, cursor, width, height, m.stage == "level", footer)
 }

@@ -185,7 +185,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = "작업 선택"
 		if m.opts.pickPackage && v.packages != nil && m.client.backend == nil {
 			m.stage = "package"
-			m.status = "작업할 패키지를 선택하세요 · ↑↓ 이동 · Enter 선택"
+			m.status = "작업할 패키지를 선택하세요 · ↑↓ 이동 · Enter 선택 · 1-9 바로 선택"
 			if len(v.packages.Packages) == 0 {
 				m.status = "등록된 패키지가 없습니다 · r 새로고침 · q 종료"
 			}
@@ -948,7 +948,7 @@ func (m model) View() string {
 		}
 	}
 	if m.stage == "package" {
-		help = "q 종료  ↑↓ 이동  Enter 선택  / 검색  r 갱신"
+		help = "q 종료  ↑↓ 이동  Enter 선택  1-9 바로 선택  / 검색  r 갱신"
 	}
 	footer := lipgloss.NewStyle().Foreground(color).Render(line("● "+m.status, width)) + "\n" + line(help, width)
 	return top + "\n" + line(nav, width) + "\n" + body + "\n" + footer

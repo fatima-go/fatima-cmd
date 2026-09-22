@@ -164,9 +164,12 @@ func packageChoices(catalog *api.PackageCatalog) []share.PackageChoice {
 		if p == nil || p.Target == nil {
 			continue
 		}
-		choices = append(choices, share.PackageChoice{ID: p.Target.PackageId, Group: p.Target.Group, Endpoint: p.Target.Endpoint, State: p.State})
+		choices = append(choices, packageChoice(p))
 	}
 	return choices
+}
+func packageChoice(p *api.PackageEntry) share.PackageChoice {
+	return share.PackageChoice{ID: p.Target.PackageId, Group: p.Target.Group, Endpoint: p.Target.Endpoint, State: p.State}
 }
 
 // SelectionPackages narrows initial routing ambiguity to packages on this client.

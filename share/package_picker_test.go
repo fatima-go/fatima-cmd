@@ -49,6 +49,132 @@ func TestPackagePickerSelectionAndCancel(t *testing.T) {
 	}
 }
 
+func pickerFixture(count int) packagePicker {
+	var choices []PackageChoice
+	for i := 0; i < count; i++ {
+		choices = append(choices, PackageChoice{
+			ID:       fmt.Sprintf("be%02d.prod:default", i),
+			Group:    "backend",
+			Endpoint: fmt.Sprintf("http://10.180.37.%d:9180/XFOuLgmw/", i+1),
+			State:    "A",
+		})
+	}
+	choices = append(choices, PackageChoice{ID: "evt01.prod:default", Group: "event", Endpoint: "http://10.180.36.239:9180/DlTsUlcg/", State: "D"})
+	return packagePicker{choices: choices, width: 100, height: 20}
+}
+
+func typePicker(m tea.Model, keys ...string) tea.Model {
+	for _, key := range keys {
+		switch key {
+		case "enter":
+			m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		case "esc":
+			m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+		case "down":
+			m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		case "backspace":
+			m, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+		default:
+			m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+		}
+	}
+	return m
+}
+
+// The filter must not swallow the picker's own keys, and a key that quits the
+// picker outside the filter has to stay typeable inside it.
+func TestPackagePickerFilterAndQuickSelect(t *testing.T) {
+	m := typePicker(pickerFixture(3), "/", "e", "v", "t")
+	if got := m.(packagePicker).filter; got != "evt" {
+		t.Fatal(got)
+	}
+	if rows := m.(packagePicker).visible(); len(rows) != 1 || rows[0].ID != "evt01.prod:default" {
+		t.Fatal(rows)
+	}
+	quitting := typePicker(pickerFixture(3), "/", "q")
+	if quitting.(packagePicker).filter != "q" || quitting.(packagePicker).selected != "" {
+		t.Fatal("filter input quit the picker")
+	}
+	applied, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // applies the filter
+	if cmd != nil || applied.(packagePicker).filtering {
+		t.Fatal("filter was not applied")
+	}
+	chosen, cmd := applied.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil || chosen.(packagePicker).selected != "evt01.prod:default" {
+		t.Fatal(chosen)
+	}
+	// A digit selects by the row number the table prints, within the filter.
+	numbered, cmd := applied.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1")})
+	if cmd == nil || numbered.(packagePicker).selected != "evt01.prod:default" {
+		t.Fatal(numbered)
+	}
+	if out, cmd := applied.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")}); cmd != nil || out.(packagePicker).selected != "" {
+		t.Fatal("digit beyond the filtered list selected a package")
+	}
+	full := typePicker(pickerFixture(3), "3")
+	if full.(packagePicker).selected != "be02.prod:default" {
+		t.Fatal(full)
+	}
+	// Esc leaves the filter without selecting, restoring every candidate.
+	cleared := typePicker(m, "esc")
+	if len(cleared.(packagePicker).visible()) != 4 || cleared.(packagePicker).selected != "" {
+		t.Fatal(cleared)
+	}
+	empty := typePicker(pickerFixture(3), "/", "z", "z", "enter")
+	if out, cmd := empty.Update(tea.KeyMsg{Type: tea.KeyEnter}); cmd != nil || out.(packagePicker).selected != "" {
+		t.Fatal("selected from an empty list")
+	}
+	if !strings.Contains(ansi.Strip(empty.View()), "조건에 맞는 패키지가 없습니다") {
+		t.Fatal(empty.View())
+	}
+}
+
+func TestPackagePickerSheetFitsEverySize(t *testing.T) {
+	m := pickerFixture(24)
+	for _, size := range [][2]int{{60, 12}, {60, 19}, {80, 24}, {88, 20}, {100, 18}, {132, 42}} {
+		m.width, m.height = size[0], size[1]
+		for _, cursor := range []int{0, 12, 24} {
+			m.cursor = cursor
+			for _, filtering := range []bool{false, true} {
+				m.filtering, m.filter = filtering, "10.180.37.2"
+				view := m.View()
+				if rows := strings.Split(view, "\n"); len(rows) > m.height {
+					t.Fatalf("height overflow %dx%d: %d rows", m.width, m.height, len(rows))
+				}
+				for _, row := range strings.Split(view, "\n") {
+					if ansi.StringWidth(row) > m.width {
+						t.Fatalf("width overflow %dx%d: %q", m.width, m.height, row)
+					}
+				}
+			}
+		}
+	}
+	m.width, m.height, m.filter, m.filtering, m.cursor = 100, 20, "", false, 0
+	view := ansi.Strip(m.View())
+	// The endpoint's random path token is noise; the host and port are not.
+	if !strings.Contains(view, "10.180.37.1:9180") || strings.Contains(view, "XFOuLgmw") {
+		t.Fatal(view)
+	}
+	if !strings.Contains(view, "ALIVE") || !strings.Contains(view, "PACKAGE") || !strings.Contains(view, "HOST") {
+		t.Fatal(view)
+	}
+	m.width = 80
+	if narrow := ansi.Strip(m.View()); strings.Contains(narrow, "HOST") || !strings.Contains(narrow, "GROUP") {
+		t.Fatal(narrow)
+	}
+}
+
+func TestPackageStateLabel(t *testing.T) {
+	for state, want := range map[string]string{"A": "ALIVE", "D": "DEAD", "": "UNKNOWN", "alive": "ALIVE", "UNREACHABLE": "UNREACHABLE"} {
+		if got := PackageStateLabel(state); got != want {
+			t.Fatalf("%q: %q, want %q", state, got, want)
+		}
+	}
+	if got := PackageHost("not a url"); got != "not a url" {
+		t.Fatal(got)
+	}
+}
+
 func TestLegacyEndpointPackageSelection(t *testing.T) {
 	for _, count := range []int{0, 1, 2} {
 		for _, explicit := range []bool{false, true} {
