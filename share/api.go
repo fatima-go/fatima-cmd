@@ -178,6 +178,9 @@ func CallFatimaUploadStream(url string, flags FatimaCmdFlags, body io.Reader, si
 		TLSHandshakeTimeout: 2 * time.Second,
 		// generous enough for the server to fsync a large file after the body
 		ResponseHeaderTimeout: 5 * time.Minute,
+		// lets juno reject an upload (auth, conflict, size) before the body is
+		// sent; otherwise it closes the socket mid-body and the status is lost
+		ExpectContinueTimeout: 3 * time.Second,
 		DisableKeepAlives:     true,
 	}
 
@@ -197,6 +200,9 @@ func CallFatimaUploadStream(url string, flags FatimaCmdFlags, body io.Reader, si
 		req.Body = http.NoBody
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
+	if size > 0 {
+		req.Header.Set("Expect", "100-continue")
+	}
 	for key, value := range flags.BuildHeader() {
 		req.Header.Set(key, value)
 	}
