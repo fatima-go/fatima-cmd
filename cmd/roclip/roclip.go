@@ -31,6 +31,8 @@ import (
 
 func main() {
 	flag.StringVar(&binaryFilename, "b", "", "download binary file from juno data folder")
+	flag.StringVar(&uploadPath, "u", "", "upload local binary file to juno data folder")
+	flag.BoolVar(&overwrite, "f", false, "overwrite an existing file in juno data folder on upload")
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -43,12 +45,21 @@ func run() error {
 		return fmt.Errorf("fail to build argument for execution: %w", err)
 	}
 
+	if binaryFilename != "" && uploadPath != "" {
+		return fmt.Errorf("-b and -u cannot be used together")
+	}
+	if overwrite && uploadPath == "" {
+		return fmt.Errorf("-f is only valid with -u")
+	}
+
 	err = share.GetJunoEndpoint(&fatimaFlags)
 	if err != nil {
 		return fmt.Errorf("endpoint retrieve fail: %w", err)
 	}
 
-	if binaryFilename != "" {
+	if uploadPath != "" {
+		err = juno.UploadJunoClipBinary(fatimaFlags, uploadPath, overwrite)
+	} else if binaryFilename != "" {
 		err = juno.DownloadJunoClipBinary(fatimaFlags, binaryFilename)
 	} else {
 		err = juno.PrintJunoClipboard(fatimaFlags)
@@ -59,4 +70,8 @@ func run() error {
 	return nil
 }
 
-var binaryFilename string
+var (
+	binaryFilename string
+	uploadPath     string
+	overwrite      bool
+)

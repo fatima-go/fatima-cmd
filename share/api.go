@@ -168,6 +168,63 @@ func CallFatimaStream(url string, flags FatimaCmdFlags, b []byte, extraHeaders m
 	return resp, nil
 }
 
+// CallFatimaUploadStream streams body as an octet-stream POST without applying a
+// timeout to the transfer. The caller must close the returned response body.
+func CallFatimaUploadStream(url string, flags FatimaCmdFlags, body io.Reader, size int64, extraHeaders map[string]string) (*http.Response, error) {
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout: 10 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout: 2 * time.Second,
+		// generous enough for the server to fsync a large file after the body
+		ResponseHeaderTimeout: 5 * time.Minute,
+		DisableKeepAlives:     true,
+	}
+
+	client := &http.Client{
+		Transport: transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	req, err := http.NewRequest(http.MethodPost, url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.ContentLength = size
+	if size == 0 {
+		req.Body = http.NoBody
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	for key, value := range flags.BuildHeader() {
+		req.Header.Set(key, value)
+	}
+	for key, value := range extraHeaders {
+		req.Header.Set(key, value)
+	}
+
+	if flags.Debug {
+		h, _ := json.Marshal(req.Header)
+		fmt.Printf("=== POST %s ============>\n", url)
+		fmt.Printf("headers : %v\n", string(h))
+		fmt.Printf("body : %d bytes\n", size)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if flags.Debug {
+		fmt.Printf("<== %s =============\n", resp.Status)
+		h, _ := json.Marshal(resp.Header)
+		fmt.Printf("headers : %v\n", string(h))
+	}
+
+	return resp, nil
+}
+
 func screenPasswordString(b []byte) string {
 	m := make(map[string]interface{})
 	err := json.Unmarshal(b, &m)

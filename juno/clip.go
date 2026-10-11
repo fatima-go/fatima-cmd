@@ -105,6 +105,65 @@ func downloadJunoClipBinary(flags share.FatimaCmdFlags, filename string, outputD
 	}
 }
 
+func UploadJunoClipBinary(flags share.FatimaCmdFlags, path string, overwrite bool) error {
+	filename := filepath.Base(path)
+	if err := validateClipBinaryFilename(filename); err != nil {
+		return err
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("fail to open %s: %w", path, err)
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("fail to stat %s: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("not a regular file: %s", path)
+	}
+	if info.Size() > maxClipBinaryBytes {
+		return fmt.Errorf("binary file exceeds the size limit: %d > %d bytes", info.Size(), maxClipBinaryBytes)
+	}
+
+	headers := map[string]string{
+		"Content-Disposition": mime.FormatMediaType("attachment", map[string]string{"filename": filename}),
+	}
+	if overwrite {
+		headers[clipOverwriteHeader] = "true"
+	}
+
+	serviceURL := flags.BuildJunoServiceUrl(v1ClipboardDisUrl)
+	resp, err := share.CallFatimaUploadStream(serviceURL, flags, file, info.Size(), headers)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		var result struct {
+			Size int64 `json:"size"`
+		}
+		if err = json.NewDecoder(io.LimitReader(resp.Body, maxClipErrorResponseBytes)).Decode(&result); err != nil {
+			return fmt.Errorf("invalid upload response: %w", err)
+		}
+		if result.Size != info.Size() {
+			return fmt.Errorf("upload size mismatch: sent %d bytes, juno stored %d", info.Size(), result.Size)
+		}
+		fmt.Printf("uploaded %s (%s)\n", filename, share.ByteSize(uint64(result.Size)))
+		return nil
+	case http.StatusConflict:
+		return fmt.Errorf("%s already exists on juno; use -f to overwrite", filename)
+	case http.StatusNotFound:
+		return fmt.Errorf("target juno does not support binary upload")
+	default:
+		return clipBinaryResponseError(resp)
+	}
+}
+
 func fallbackToJunoClipboard(headers http.Header, body io.Reader) error {
 	responseBody, err := io.ReadAll(body)
 	if err != nil {
@@ -212,6 +271,7 @@ const (
 	v1ClipboardDisUrl               = "clip/v1"
 	clipBinaryContentType           = "application/octet-stream"
 	clipJSONContentType             = "application/json"
+	clipOverwriteHeader             = "Fatima-Clip-Overwrite"
 	maxClipBinaryBytes        int64 = 1 << 30
 	maxClipErrorResponseBytes       = 64 << 10
 )

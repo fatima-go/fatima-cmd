@@ -19,6 +19,8 @@ package juno
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -161,6 +163,100 @@ func TestValidateClipBinaryFilename(t *testing.T) {
 			assert.Error(t, validateClipBinaryFilename(filename))
 		})
 	}
+}
+
+func TestUploadJunoClipBinarySendsFile(t *testing.T) {
+	content := []byte{0x00, 0x01, 0x7f, 0xff}
+	path := filepath.Join(t.TempDir(), "한글.bin")
+	require.NoError(t, os.WriteFile(path, content, 0600))
+
+	server := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+		assert.Equal(t, http.MethodPost, req.Method)
+		assert.Equal(t, "/clip/v1", req.URL.Path)
+		assert.Equal(t, clipBinaryContentType, req.Header.Get("Content-Type"))
+		assert.Equal(t, "test-token", req.Header.Get("Fatima-Auth-Token"))
+		assert.Equal(t, "true", req.Header.Get(clipOverwriteHeader))
+		assert.Equal(t, int64(len(content)), req.ContentLength)
+
+		_, params, err := mime.ParseMediaType(req.Header.Get("Content-Disposition"))
+		require.NoError(t, err)
+		assert.Equal(t, "한글.bin", params["filename"])
+
+		body, err := io.ReadAll(req.Body)
+		require.NoError(t, err)
+		assert.Equal(t, content, body)
+		_, _ = fmt.Fprintln(res, `{"filename":"한글.bin","size":4}`)
+	}))
+	defer server.Close()
+
+	require.NoError(t, UploadJunoClipBinary(testClipFlags(server.URL), path, true))
+}
+
+func TestUploadJunoClipBinaryOmitsOverwriteByDefault(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "empty.bin")
+	require.NoError(t, os.WriteFile(path, nil, 0600))
+
+	server := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+		assert.Empty(t, req.Header.Get(clipOverwriteHeader))
+		assert.Zero(t, req.ContentLength)
+		_, _ = fmt.Fprintln(res, `{"filename":"empty.bin","size":0}`)
+	}))
+	defer server.Close()
+
+	require.NoError(t, UploadJunoClipBinary(testClipFlags(server.URL), path, false))
+}
+
+func TestUploadJunoClipBinaryErrorResponses(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		body       string
+		expected   string
+	}{
+		{name: "exists", statusCode: http.StatusConflict, body: `{"message":"file already exists"}`, expected: "use -f to overwrite"},
+		{name: "legacy juno", statusCode: http.StatusNotFound, body: "404 page not found", expected: "does not support binary upload"},
+		{name: "too large", statusCode: http.StatusRequestEntityTooLarge, body: `{"message":"too large"}`, expected: "413 (too large)"},
+	}
+	path := filepath.Join(t.TempDir(), "mydata.bin")
+	require.NoError(t, os.WriteFile(path, []byte("data"), 0600))
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+				_, _ = io.Copy(io.Discard, req.Body)
+				res.WriteHeader(test.statusCode)
+				_, _ = fmt.Fprint(res, test.body)
+			}))
+			defer server.Close()
+
+			err := UploadJunoClipBinary(testClipFlags(server.URL), path, false)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), test.expected)
+		})
+	}
+}
+
+func TestUploadJunoClipBinaryDetectsSizeMismatch(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mydata.bin")
+	require.NoError(t, os.WriteFile(path, []byte("data"), 0600))
+
+	server := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+		_, _ = io.Copy(io.Discard, req.Body)
+		_, _ = fmt.Fprintln(res, `{"filename":"mydata.bin","size":3}`)
+	}))
+	defer server.Close()
+
+	err := UploadJunoClipBinary(testClipFlags(server.URL), path, false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "size mismatch")
+}
+
+func TestUploadJunoClipBinaryRejectsInvalidLocalFile(t *testing.T) {
+	dir := t.TempDir()
+	flags := testClipFlags("http://127.0.0.1:1")
+
+	assert.Error(t, UploadJunoClipBinary(flags, dir, false))
+	assert.Error(t, UploadJunoClipBinary(flags, filepath.Join(dir, "missing.bin"), false))
 }
 
 func testClipFlags(endpoint string) share.FatimaCmdFlags {

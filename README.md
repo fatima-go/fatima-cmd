@@ -25,3 +25,7 @@ The same selection applies before reports such as `rocron -l`, `rohis PROCESS`, 
 ## rodeploy startup
 
 `rodeploy` and `rodeploy FILE.far` start on Upload. Existing deployment history is checked in the background and shown as a count with an `l` shortcut, without switching screens or blocking FAR selection. Use `u` for Upload, `a` for uploaded artifacts, and `l` for existing deployments. The left column shows deployment progress; Tab switches list/detail focus. Explicit `rodeploy rollouts` and `rodeploy watch ID` still open their requested views.
+
+## roclip binary transfer
+
+`roclip` prints the juno clipboard. `roclip -b FILE` downloads `FILE` from the juno data folder into the current directory, and `roclip -u PATH` uploads a local file to the juno data folder under its base name (up to 1 GiB, any role). An upload never replaces an existing file unless `-f` is given; interrupted transfers leave the existing file intact. Juno versions without upload support are reported as such.
