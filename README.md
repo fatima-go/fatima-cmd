@@ -29,3 +29,20 @@ The same selection applies before reports such as `rocron -l`, `rohis PROCESS`, 
 ## roclip binary transfer
 
 `roclip` prints the juno clipboard. `roclip -b FILE` downloads `FILE` from the juno data folder into the current directory, and `roclip -u PATH` uploads a local file to the juno data folder under its base name (up to 1 GiB, any role). An upload never replaces an existing file unless `-f` is given; interrupted transfers leave the existing file intact. Juno versions without upload support are reported as such.
+
+## lccrypto
+
+`lccrypto enc VALUE...` encrypts with `native` by default; use `-s b64` for Base64 encoding. Quote values containing spaces. Leading/trailing whitespace and empty values are preserved.
+
+```sh
+lccrypto enc 'hello'
+lccrypto enc -s b64 'hello'
+lccrypto enc -f ./secret.txt -o ./secret.enc
+lccrypto dec -f ./secret.enc -o ./restored.txt
+```
+
+Both commands accept `-f/--file PATH` instead of positional values and `-o/--output PATH` to save only the result without displaying plaintext or ciphertext. `enc -f` reads the whole file as one value, including all whitespace and final newlines. Encrypted output contains one value per line, without an extra final newline; `dec -f` reads this format (LF or CRLF, with an optional final line ending). `dec -o` accepts exactly one encrypted value and writes the original bytes without adding a newline.
+
+Output files are always newly created with owner-only permissions (`0600`); existing files, including symbolic links, are rejected. There is no overwrite or append mode. Failed commands report errors on stderr and exit nonzero.
+
+`native` retains compatibility with Fatima's existing AES-CBC format. Encryption and decryption require the same `FATIMA_PROFILE` (case-insensitive; defaults to `local`). This legacy format derives its key and fixed IV from the profile and has no authentication; it cannot reliably detect every wrong profile or altered ciphertext. Base64 provides encoding only, without confidentiality. This command validates native block lengths and padding locally; other applications using `fatima-core`'s `ResolveSecret` are unchanged.
