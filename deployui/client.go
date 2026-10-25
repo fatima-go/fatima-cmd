@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/fatima-go/fatima-cmd/config"
+	"github.com/fatima-go/fatima-cmd/farassemble"
 	"github.com/fatima-go/fatima-opm/api"
 	"github.com/fatima-go/fatima-opm/artifact"
 	"github.com/fatima-go/fatima-opm/transport"
@@ -31,6 +32,8 @@ type Client struct {
 	ownerWG     sync.WaitGroup
 	closeOnce   sync.Once
 	closed      bool
+	// assemblyNotice 마지막 업로드에서 profile 에 맞게 FAR 를 재조립한 결과 요약
+	assemblyNotice string
 }
 
 func NewClient(c config.JupiterContextRecord) (*Client, error) {
@@ -126,19 +129,33 @@ func (c *Client) Watch(ctx context.Context, id string, revision uint64) (grpc.Se
 	}
 	return api.NewDeploymentsClient(c.conn).Watch(ctx, &api.WatchRequest{Id: id, AfterRevision: revision})
 }
+
+// Upload uploads the FAR assembled for the Jupiter profile. The original FAR is
+// never changed; a temporary assembled copy is removed once the upload ends.
 func (c *Client) Upload(ctx context.Context, path, requestID string, progress func(int64, int64)) (*api.Artifact, error) {
-	sum, size, e := artifact.Digest(path)
+	c.mu.Lock()
+	c.assemblyNotice = ""
+	c.mu.Unlock()
+	ctx, e := c.Context(ctx)
+	if e != nil {
+		return nil, e
+	}
+	far, cleanup, notice, e := c.assembleForUpload(ctx, path)
+	if e != nil {
+		return nil, e
+	}
+	defer cleanup()
+	c.mu.Lock()
+	c.assemblyNotice = notice
+	c.mu.Unlock()
+	sum, size, e := artifact.Digest(far)
 	if e != nil {
 		return nil, e
 	}
 	if size <= 0 || size > artifact.MaxSize {
 		return nil, fmt.Errorf("FAR must be between 1 byte and 1 GiB")
 	}
-	ctx, e = c.Context(ctx)
-	if e != nil {
-		return nil, e
-	}
-	f, e := os.Open(path)
+	f, e := os.Open(far)
 	if e != nil {
 		return nil, e
 	}
@@ -173,4 +190,45 @@ func (c *Client) Upload(ctx context.Context, path, requestID string, progress fu
 		}
 	}
 	return stream.CloseAndRecv()
+}
+
+// AssemblyNotice summarizes how the last uploaded FAR was assembled for the
+// Jupiter profile. It is empty when the FAR has no binary install policy.
+func (c *Client) AssemblyNotice() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.assemblyNotice
+}
+
+// assembleForUpload removes binaries the Jupiter profile does not install. A
+// Jupiter that does not advertise session_profile cannot tell an unset profile
+// from a missing one, so the original FAR is uploaded unchanged.
+func (c *Client) assembleForUpload(ctx context.Context, path string) (string, func(), string, error) {
+	noop := func() {}
+	c.mu.Lock()
+	profile := c.session.GetProfile()
+	c.mu.Unlock()
+
+	check, cancel := context.WithTimeout(ctx, 7*time.Second)
+	caps, e := transport.Discover(check, c.Config.Jupiter)
+	cancel()
+	if e != nil {
+		return path, noop, "", fmt.Errorf("capability lookup failed; no upload submitted: %w", e)
+	}
+	if !transport.Supports(caps, "session_profile") {
+		dep, err := farassemble.ReadDeployment(path)
+		if err == nil && dep != nil && dep.HasInstallPolicy() {
+			return path, noop, "Jupiter가 profile을 알려주지 않아 FAR를 그대로 배포합니다 (profile별 설치 정책 미적용)", nil
+		}
+		return path, noop, "", nil
+	}
+
+	result, cleanup, e := farassemble.ForProfile(path, profile)
+	if e != nil {
+		return path, noop, "", e
+	}
+	if !result.HasPolicy {
+		return result.Path, cleanup, "", nil
+	}
+	return result.Path, cleanup, result.Summary(), nil
 }

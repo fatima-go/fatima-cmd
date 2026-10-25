@@ -26,6 +26,15 @@ The same selection applies before reports such as `rocron -l`, `rohis PROCESS`, 
 
 `rodeploy` and `rodeploy FILE.far` start on Upload. Existing deployment history is checked in the background and shown as a count with an `l` shortcut, without switching screens or blocking FAR selection. Use `u` for Upload, `a` for uploaded artifacts, and `l` for existing deployments. The left column shows deployment progress; Tab switches list/detail focus. Explicit `rodeploy rollouts` and `rodeploy watch ID` still open their requested views.
 
+## rodeploy profile assembly
+
+A FAR built by gofar with a project config (`.gofar/gofar.yaml`) records a per-binary install policy (`binaries`) in `deployment.json`. Jupiter reports its environment profile (`FATIMA_PROFILE`) on login, and `rodeploy` (both the default v2 flow and `--legacy`) removes the binaries that profile does not install before uploading. One Jupiter is assumed to serve one profile.
+
+- The original FAR is never changed, so the same FAR can be deployed to several environments. The assembled copy is created under `$TMPDIR/rodeploy-*` and removed after the upload (v2) or deploy request (legacy).
+- The assembled FAR keeps the original file name and every other entry byte-for-byte, and adds `assembly` (profile, removed binaries, source SHA-256) to `deployment.json`. Assembling the same FAR for the same profile always produces identical bytes, so `--request-id` retries remain valid.
+- An already assembled FAR is refused for a different profile; deploy the original FAR instead.
+- The original FAR is uploaded unchanged when it has no `binaries`, when the profile installs every binary, or when Jupiter does not report a profile (a warning is shown when the FAR has a profile-dependent policy).
+
 ## roclip binary transfer
 
 `roclip` prints the juno clipboard. `roclip -b FILE` downloads `FILE` from the juno data folder into the current directory, and `roclip -u PATH` uploads a local file to the juno data folder under its base name (up to 1 GiB, any role). An upload never replaces an existing file unless `-f` is given; interrupted transfers leave the existing file intact. Juno versions without upload support are reported as such.

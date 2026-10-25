@@ -54,12 +54,18 @@ func GetToken(flags *FatimaCmdFlags) error {
 		return fmt.Errorf("there is not token")
 	}
 
-	if val, ok := token.(string); ok {
-		flags.Token = val
-		return nil
+	val, ok := token.(string)
+	if !ok {
+		return fmt.Errorf("invalid token type. real type=%v", reflect.ValueOf(token).Type())
 	}
+	flags.Token = val
 
-	return fmt.Errorf("invalid token type. real type=%v", reflect.ValueOf(token).Type())
+	// 구버전 jupiter 는 profile 을 응답하지 않는다
+	if profile, ok := respMap["profile"].(string); ok {
+		flags.Profile = profile
+		flags.ProfileKnown = true
+	}
+	return nil
 }
 
 const (

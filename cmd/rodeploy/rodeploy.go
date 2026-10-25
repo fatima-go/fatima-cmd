@@ -86,6 +86,15 @@ func legacyMain() {
 	}
 
 	fmt.Printf("%s login success...\n", time.Now().Format(yyyyMMddHHmmss))
+
+	// jupiter(배포 환경)의 profile 에 설치하지 않는 바이너리를 제외한다. 원본 far 는 변경하지 않는다
+	farArtifactFile, cleanupAssembled, err := assembleForProfile(fatimaFlags, farArtifactFile)
+	if err != nil {
+		fmt.Printf("fail to assemble far for profile %q : %s\n", fatimaFlags.Profile, err.Error())
+		return
+	}
+	defer cleanupAssembled()
+
 	if platformSupport {
 		ropackResp, err := jupiter.GetPackages(fatimaFlags)
 		if err != nil {
