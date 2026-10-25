@@ -54,6 +54,9 @@ type FatimaCmdFlags struct {
 	Args        []string
 	Token       string
 	Endpoint    string
+	// Profile jupiter 로그인 응답의 profile. ProfileKnown 이 false 이면 profile 을 알려주지 않는 jupiter 이다
+	Profile      string
+	ProfileKnown bool
 }
 
 func (c FatimaCmdFlags) Validate() error {

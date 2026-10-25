@@ -29,8 +29,8 @@ github.com/fatima-go/fatima-core/v2 v2.0.0 h1:FwtOrpwPBl22hsuEjKSCuRkjgZ+zs//DHn
 github.com/fatima-go/fatima-core/v2 v2.0.0/go.mod h1:YUKqBRl/vG/e2g8kJMnKWC4FDPQ/4V8h3YIFGbVAqrU=
 github.com/fatima-go/fatima-log v1.0.2 h1:SIEr4yN/dbBD6csuFiFrXdjCrOu+ZG9893pUcRHdJOA=
 github.com/fatima-go/fatima-log v1.0.2/go.mod h1:zwV6GGIKpQDYRVLJqZxSMuTq2rZEFblyt6QybPdlfgw=
-github.com/fatima-go/fatima-opm v1.0.0 h1:f51R+PmCzPA6cduD21DETbScnfS6DLBryui5j7b72q0=
-github.com/fatima-go/fatima-opm v1.0.0/go.mod h1:x+frSOmI8czCjkgRtJdgXBUk2/DKn0a9MmB/e/chbr4=
+github.com/fatima-go/fatima-opm v1.1.0 h1:aa7bAl/LFK1MdEF/+p5K/XT+ebEbMxuGSp6m36UN3KA=
+github.com/fatima-go/fatima-opm v1.1.0/go.mod h1:x+frSOmI8czCjkgRtJdgXBUk2/DKn0a9MmB/e/chbr4=
 github.com/getsentry/sentry-go v0.46.2 h1:1jhYwrKGa3sIpo/y5iDNXS5wDoT7I1KNzMHrnK6ojns=
 github.com/getsentry/sentry-go v0.46.2/go.mod h1:evVbw2qotNUdYG8KxXbAdjOQWWvWIwKxpjdZZIvcIPw=
 github.com/go-errors/errors v1.4.2 h1:J6MZopCL4uSllY1OfXM374weqZFFItUbrImctkmUxIA=

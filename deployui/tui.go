@@ -436,6 +436,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.focusDetail, m.scroll = false, 0
 			m.opts.RequestID = ""
 			m.notice = "Upload finalized: " + m.artifact.Id
+			if notice := m.client.AssemblyNotice(); notice != "" {
+				m.notice += " · " + notice
+			}
 			return m, tea.Batch(m.next(), m.load())
 		}
 	case tea.KeyMsg:
@@ -777,7 +780,7 @@ func (m *model) startUpload() {
 	m.busy = true
 	m.bytes = 0
 	m.total = 0
-	m.notice = "Hashing FAR, authenticating, then uploading to Jupiter"
+	m.notice = "Authenticating, assembling FAR for the Jupiter profile, then uploading"
 	path := strings.TrimSpace(m.input)
 	if strings.HasPrefix(path, "~/") {
 		if home, e := os.UserHomeDir(); e == nil {

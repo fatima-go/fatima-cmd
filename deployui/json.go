@@ -29,6 +29,10 @@ func RunJSON(c *Client, o Options) (resultErr error) {
 			return fmt.Errorf("--request-id is required for an upload in JSON mode")
 		}
 		result, err = c.Upload(ctx, o.Value, o.RequestID, nil)
+		if notice := c.AssemblyNotice(); notice != "" {
+			// stdout 은 JSON 결과 전용이므로 재조립 요약은 stderr 로 알린다
+			fmt.Fprintln(os.Stderr, notice)
+		}
 	case "", "artifacts":
 		result, err = c.Artifacts(ctx)
 	case "rollouts":
