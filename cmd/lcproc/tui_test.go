@@ -48,8 +48,9 @@ func TestRevisionConfirmationAndRunningGuard(t *testing.T) {
 	if !strings.Contains(before, "R001") {
 		t.Fatal(before)
 	}
+	// Esc returns to the revision list with the chosen revision still selected.
 	canceled := press(m, tea.KeyEsc)
-	if canceled.stage != "action" {
+	if canceled.stage != "version" || canceled.revisions[canceled.cursor].dir != m.chosen.dir {
 		t.Fatal(canceled.stage)
 	}
 	dir := filepath.Join(home, "app/sample/proc")

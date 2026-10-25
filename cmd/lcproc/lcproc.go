@@ -42,6 +42,7 @@ example :
 
 lcproc mypgm version		: display mypgm revision versions
 lcproc mypgm version R017	: change mypgm revision to R017
+lcproc mypgm version o_35e6d8ad1a	: change mypgm to a v2 deployed revision
 lcproc mypgm dup mypgm2		: duplicate mypgm to mypgm2
 `
 

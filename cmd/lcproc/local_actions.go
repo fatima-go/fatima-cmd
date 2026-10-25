@@ -1,13 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -45,62 +43,46 @@ func localRevisions(home, name string) ([]Revision, string, error) {
 	if err := validLocalName(name); err != nil {
 		return nil, "", err
 	}
-	root := filepath.Join(home, "app", "revision", name)
-	entries, err := os.ReadDir(root)
+	result, err := listRevisions(filepath.Join(home, "app", "revision", name))
 	if err != nil {
 		return nil, "", fmt.Errorf("리비전을 찾을 수 없습니다: %w", err)
 	}
-	var result []Revision
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		var n int
-		idx := strings.LastIndex(e.Name(), "_R")
-		if idx < 0 {
-			continue
-		}
-		tag := e.Name()[idx+1:]
-		if _, err := fmt.Sscanf(tag, "R%d", &n); err != nil {
-			continue
-		}
-		r := Revision{dir: filepath.Join(root, e.Name()), revision: tag, number: n}
-		if info, err := e.Info(); err == nil {
-			r.createDtime = info.ModTime().Format(yyyyMMddHHmmss)
-		}
-		if data, err := os.ReadFile(filepath.Join(r.dir, deploymentJsonFile)); err == nil {
-			var d Deployment
-			if json.Unmarshal(data, &d) == nil {
-				r.deployment = d.Build
-			}
-		}
-		result = append(result, r)
-	}
-	sort.Sort(RevisionNumbers(result))
 	current, err := filepath.EvalSymlinks(filepath.Join(home, "app", name))
 	if err != nil {
 		return nil, "", err
 	}
 	return result, current, nil
 }
-func ensureStopped(home, name string) error {
+
+// runningPid reports the process recorded in the pid file when it is alive.
+func runningPid(home, name string) (int, error) {
 	b, err := os.ReadFile(filepath.Join(home, "app", name, "proc", name+".pid"))
 	if os.IsNotExist(err) {
-		return nil
+		return 0, nil
 	}
 	if err != nil {
-		return err
+		return 0, err
 	}
 	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
 	if err != nil || pid < 2 {
-		return fmt.Errorf("PID 파일을 확인할 수 없습니다. 프로세스 상태를 먼저 확인하세요")
+		return 0, fmt.Errorf("PID 파일을 확인할 수 없습니다. 프로세스 상태를 먼저 확인하세요")
 	}
 	err = syscall.Kill(pid, 0)
 	if err == nil || err == syscall.EPERM {
-		return fmt.Errorf("%s가 실행 중입니다(PID %d). rostop으로 중지한 뒤 다시 시도하세요", name, pid)
+		return pid, nil
 	}
 	if err != syscall.ESRCH {
+		return 0, err
+	}
+	return 0, nil
+}
+func ensureStopped(home, name string) error {
+	pid, err := runningPid(home, name)
+	if err != nil {
 		return err
+	}
+	if pid > 0 {
+		return fmt.Errorf("%s가 실행 중입니다(PID %d). rostop으로 중지한 뒤 다시 시도하세요", name, pid)
 	}
 	return nil
 }

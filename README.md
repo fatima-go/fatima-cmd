@@ -6,8 +6,10 @@ process with "ro" prefix means remote operating and "lc" means local.
 
 Run `lcproc` in a terminal to choose a local process, inspect/switch revisions, or duplicate it under a new name. `FATIMA_HOME` selects the local environment; no Jupiter connection is required.
 
+- The screen uses the same frame as the `ro*` commands: a process sheet with the current revision, revision count and state, and a detail sheet beside it (Tab moves focus between list and detail on small terminals).
 - Arrow keys and Enter select; Esc goes back; q exits (Ctrl+C while entering a name).
 - `lcproc sample version` opens revisions; `lcproc sample dup copy` pre-fills the duplicate name.
+- Revisions are listed newest first, both legacy (`<time>_R017`, shown as `R017`) and juno v2 deployments (`v2_<operation id>`, shown as the first 12 characters of the operation ID such as `o_35e6d8ad1a`). `lcproc sample version o_35e6d8ad1a` accepts either the shown label or the full folder name. juno keeps the three newest revisions of every folder in `app/revision` and never removes the linked one.
 - Changes require an explicit confirmation. Revision switching requires the process to be stopped and does not start it automatically.
 - Duplication copies matching executable/configuration files, without subdirectories, and requires subsequent registration using `roproc add`.
 - Use `lcproc --plain sample version` for the existing text workflow. Non-terminal invocation also retains that workflow.

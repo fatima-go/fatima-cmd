@@ -123,3 +123,45 @@ func SheetView(title string, columns []SheetColumn, rows [][]string, cursor, wid
 	}
 	return strings.Join(append(out, sheetLine(position+"  "+footer, width)), "\n")
 }
+
+// PropertySheet renders key/value rows with long values wrapped; offset scrolls
+// the rows and tabbable advertises Tab focus between a list and this sheet.
+func PropertySheet(title string, fields [][2]string, width, height, offset int, focused, tabbable bool) string {
+	keyWidth := min(12, max(8, (width-7)/3))
+	valueWidth := width - 7 - keyWidth
+	columns := []SheetColumn{{Name: "항목", Width: keyWidth}, {Name: "값", Width: valueWidth}}
+	var rows [][]string
+	for _, field := range fields {
+		value := strings.ReplaceAll(sheetClean(field[1]), "\t", " ")
+		if value == "" {
+			value = "-"
+		}
+		for i, part := range strings.Split(ansi.Hardwrap(value, valueWidth, true), "\n") {
+			key := ""
+			if i == 0 {
+				key = field[0]
+			}
+			rows = append(rows, []string{key, part})
+		}
+	}
+	room := max(1, height-6)
+	start := min(offset, max(0, len(rows)-room))
+	end := min(len(rows), start+room)
+	window := append([][]string(nil), rows[start:end]...)
+	for len(window) < room {
+		window = append(window, nil)
+	}
+	out := []string{SheetTitle(title, width, focused)}
+	out = append(out, SheetGrid(columns, window, -1)...)
+	foot := ""
+	if tabbable {
+		foot = "Tab 목록 / 상세"
+	}
+	if len(rows) > room {
+		foot = fmt.Sprintf("%d–%d / %d", start+1, end, len(rows))
+		if tabbable {
+			foot += "  Tab 상세 · ↑↓ 스크롤"
+		}
+	}
+	return strings.Join(append(out, sheetLine(foot, width)), "\n")
+}
